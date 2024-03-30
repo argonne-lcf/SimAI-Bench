@@ -20,7 +20,7 @@ import utils
 
 ## TEMPORARY FIZ FOR NOW
 ## NEED TO ADD AN EXECUTOR ONE DIRECTORY ABOVE
-sys.path.append('../src/backends/smartsim')
+sys.path.append('../../src/backends/smartsim')
 import ssim_utils
 
 ## Main function

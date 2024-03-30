@@ -4,6 +4,7 @@
 ##### training driver to assist in learning and evaluation model performance.
 #####
 import sys
+import io
 from datetime import datetime
 from time import sleep,perf_counter
 import numpy as np
@@ -251,6 +252,22 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                 print("\nMax number of epochs reached. Stopping training loop. \n", flush=True)
             iTest = True
             break
+
+        # Share model checkpoint
+        """
+        if ((iepoch+1)%cfg.online.checkpoints==0):
+            if (comm.rankl==0):
+                if (cfg.distributed=="ddp"):
+                    jit_model = model.module.trace_model(testData)
+                    buffer = io.BytesIO()
+                    torch.jit.save(jit_model, buffer)
+                    model_bytes = buffer.getvalue()
+                    jit_model(testData)
+                client.client.set_model(cfg.model, model_bytes,
+                                        "TORCH", "CPU")
+            if (comm.rank==0):
+                print("Shared model checkpoint", flush=True)
+        """
 
         iepoch = iepoch + 1 
 

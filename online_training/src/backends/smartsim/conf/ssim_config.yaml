@@ -6,7 +6,7 @@ database:
     port: 6780
     network_interface: "lo" # lo,hsn0,uds - network used for data transfer
     # On Polaris: lo hsn0 for clustered, lo and uds for co-located
-    exp_name: "cfdml" # string
+    exp_name: "SimAI-Bench" # string
     launcher: "pbs" # pbs, local - job scheduler
 
 # Run config
