@@ -107,8 +107,8 @@ def validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
     running_acc = running_acc.item() / num_batches
     running_loss = running_loss.item() / num_batches
 
-    if (cfg.model=='sgs'):
-        valData = data[:,:cfg.sgs.inputs]
+    if (cfg.model=='mlp'):
+        valData = data[:,:cfg.mlp.inputs]
     else:
         valData = data
 
@@ -151,8 +151,8 @@ def test(comm, model, test_loader, mixed_dtype, cfg):
     running_acc = running_acc.cpu().numpy() / num_batches
     running_loss = running_loss.item() / num_batches
 
-    if (cfg.model=='sgs'):
-        testData = data[:,:cfg.sgs.inputs]
+    if (cfg.model=='mlp'):
+        testData = data[:,:cfg.mlp.inputs]
     else:
         testData = data
 
@@ -267,8 +267,8 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
                 t_data.i_val = t_data.i_val + 1
         else:
             global_val_loss = global_loss
-            if (cfg.model=='sgs'):
-                valData = data[cfg.mini_batch,:cfg.sgs.inputs].to(cfg.device)
+            if (cfg.model=='mlp'):
+                valData = data[cfg.mini_batch,:cfg.mlp.inputs].to(cfg.device)
             else:
                 valData = data.to(cfg.device)
 

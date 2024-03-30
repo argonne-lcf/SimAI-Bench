@@ -158,8 +158,8 @@ def generate_training_data(args, rank: int, step: Optional[int] = 0) -> Tuple[np
     """
     random_seed = 12345 + 1000*rank + 100*step
     rng = np.random.default_rng(seed=random_seed)
-    # For the SGS model (MLP), train versions of y=sin(x)
-    if (args.model=="sgs"):
+    # For the MLP model, train versions of y=sin(x)
+    if (args.model=="mlp"):
         if (args.problem_size=="small"):
             n_samples = 512
             ndIn = 1
@@ -188,7 +188,7 @@ def main():
 
     # Parse arguments
     parser = ArgumentParser(description='SmartRedis Data Producer')
-    parser.add_argument('--model', default="sgs", type=str, help='ML model identifier (sgs, quadconv, gnn)')
+    parser.add_argument('--model', default="mlp", type=str, help='ML model identifier (mlp, quadconv, gnn)')
     parser.add_argument('--problem_size', default="small", type=str, help='Size of problem to emulate (small, medium, large)')
     parser.add_argument('--db_launch', default="colocated", type=str, help='Database deployment (colocated, clustered)')
     parser.add_argument('--db_nodes', default=1, type=int, help='Number of database nodes')

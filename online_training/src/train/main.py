@@ -11,12 +11,16 @@ import datetime
 # Import ML libraries
 import torch
 
-# Import required functions
+# Import internal packages
 from online_train import onlineTrainLoop
 from offline_train import offlineTrainLoop
 import models
 from time_prof import timeStats
 import utils
+
+## TEMPORARY FIZ FOR NOW
+## NEED TO ADD AN EXECUTOR ONE DIRECTORY ABOVE
+sys.path.append('../src/backends/smartsim')
 import ssim_utils
 
 ## Main function
@@ -84,7 +88,7 @@ def main(cfg: DictConfig):
 
     # Initialize SmartRedis client and gather metadata
     client = None
-    if cfg.online.db_launch:
+    if cfg.online.driver=='smartsim':
         client = ssim_utils.SmartRedisClient()
         client.init(cfg, comm, t_data)
         client.read_sizeInfo(cfg, comm, t_data)
@@ -121,7 +125,7 @@ def main(cfg: DictConfig):
         sys.stdout.flush()
 
     # Train model
-    if cfg.online.db_launch:
+    if cfg.online.driver:
         model, testData = onlineTrainLoop(cfg, comm, client, t_data, model)
     else:
         model, testData = offlineTrainLoop(cfg, comm, t_data, model, data)

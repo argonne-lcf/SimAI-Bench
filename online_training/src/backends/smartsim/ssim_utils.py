@@ -32,7 +32,7 @@ class SmartRedisClient:
             if comm.rank==0: print(err)
 
         # Read the address of the co-located database first
-        if (cfg.online.db_launch=='colocated'):
+        if (cfg.online.smartsim.db_launch=='colocated'):
             #prefix = f'{cfg.online.simprocs}-procs_case/'
             #address = self.read_SSDB(prefix, comm)
             address = environ['SSDB']
@@ -42,7 +42,7 @@ class SmartRedisClient:
         # Initialize Redis clients on each rank #####
         if (comm.rank == 0):
             print("\nInitializing Python clients ...", flush=True)
-        if (cfg.online.db_nodes==1):
+        if (cfg.online.smartsim.db_nodes==1):
             rtime = perf_counter()
             sys.stdout.flush()
             self.client = Client(address=address, cluster=False)
@@ -51,7 +51,7 @@ class SmartRedisClient:
             t_data.i_init = t_data.i_init + 1
         else:
             rtime = perf_counter()
-            client = Client(address=address, cluster=True)
+            self.client = Client(address=address, cluster=True)
             rtime = perf_counter() - rtime
             t_data.t_init = t_data.t_init + rtime
             t_data.i_init = t_data.i_init + 1
@@ -141,17 +141,5 @@ class SmartRedisClient:
             else:
                 print("Training data is accumulated in DB \n")
             sys.stdout.flush()
-
-    # Read the flag determining how many filterwidths to train on
-    def read_filters(self, cfg, t_data):
-        if (cfg.model == "sgs"):
-            while True:
-                if (self.client.poll_tensor("filters",0,1)):
-                    rtime = perf_counter()
-                    filters = self.client.get_tensor('filters')
-                    rtime = perf_counter() - rtime
-                    t_data.t_meta = t_data.t_meta + rtime
-                    t_data.i_meta = t_data.i_meta + 1 
-                    break
-            self.nfilters = filters.size
+            
     

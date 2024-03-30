@@ -111,9 +111,10 @@ def launch_coDB(cfg, nodelist, nNodes):
         ml_exe = cfg.train.executable
         if (cfg.train.config): ml_exe += f' --config-path {cfg.train.config}'
         ml_exe = ml_exe + f' ppn={cfg.run_args.mlprocs_pn}' \
-                        + f' online.db_launch={cfg.database.deployment}' \
+                        + f' online.driver=smartsim' \
                         + f' online.simprocs={cfg.run_args.simprocs}' \
-                        + f' online.db_nodes={cfg.run_args.db_nodes}'
+                        + f' online.smartsim.db_launch={cfg.database.deployment}' \
+                        + f' online.smartsim.db_nodes={cfg.run_args.db_nodes}'
         SSDB = colo_model.run_settings.env_vars['SSDB']
         if (cfg.database.launcher=='local'):
             ml_settings = RunSettings('python',

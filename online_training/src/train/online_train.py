@@ -35,7 +35,7 @@ def setup_online_dataloaders(cfg, comm, dataset, batch_size, split):
     generator = torch.Generator().manual_seed(12345)
     train_dataset, val_dataset = random_split(dataset, split, generator=generator)
  
-    if (cfg.online.db_launch=="colocated"):
+    if (cfg.online.smartsim.db_launch=="colocated"):
         replicas = cfg.ppn*cfg.ppd
         rank_arg = comm.rankl
     else:
@@ -106,10 +106,6 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
     tensor_split = [num_train_tensors, num_val_tensors]
     if (num_val_tensors==0 and cfg.validation_split>0):
         if (comm.rank==0): print("Insufficient number of tensors for validation -- skipping it")
-    #if (cfg.model=="sgs" and client.nfilters>1):
-    #    dataset = KeyMFDataset(sim_rank_list,client.num_db_tensors,
-    #                            client.head_rank,client.filters)
-    #else:
     key_dataset = KeyDataset(sim_rank_list,client.head_rank,istep,client.dataOverWr)
 
     # While loop that checks when training data is available on database
