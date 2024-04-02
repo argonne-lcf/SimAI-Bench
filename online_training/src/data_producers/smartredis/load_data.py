@@ -263,10 +263,10 @@ def main():
     success = 0
     for step in range(numts):
         # First off check if ML is done training, if so exit from loop
-        if (client.check_run()): 
-            if (rank==0):
-                print("ML says time to stop running", flush=True)
-            break
+        #if (client.check_run()): 
+        #    if (rank==0):
+        #        print("ML says time to stop running", flush=True)
+        #    break
 
         # Sleep for a few seconds to emulate the time required by PDE integration
         sleep(1)

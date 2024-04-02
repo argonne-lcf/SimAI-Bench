@@ -138,8 +138,6 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             if (tmp[0] < 0.5):
                 if (comm.rank == 0):
                     print("Simulation says time to quit training ... \n", flush=True)
-                iTest = False
-                rerun_check = 0
                 break
 
         # Get time step number from database
