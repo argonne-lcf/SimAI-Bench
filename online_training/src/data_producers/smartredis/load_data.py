@@ -19,7 +19,9 @@ class SmartRedisClient:
             "init": 0.,
             "tot_meta": 0.,
             "tot_train": 0.,
-            "train": []
+            "train": [],
+            "tot_infer": 0.,
+            "infer": []
         }
         self.time_stats = {}
 
@@ -125,7 +127,10 @@ class SmartRedisClient:
     
     # Check to see if model exists in DB
     def model_exists(self, comm, model_name: str) -> bool:
+        tic = perf_counter()
         local_exists = 1 if self.client.model_exists(model_name) else 0
+        toc = perf_counter()
+        self.times["tot_meta"] += toc - tic
         global_exists = comm.allreduce(local_exists)
         if global_exists==self.size:
             if self.rank == 0:
@@ -141,20 +146,22 @@ class SmartRedisClient:
         output_key = f"{model_name}_outputs_{self.rank}"
         if inputs.ndim<2:
             inputs = np.expand_dims(inputs, axis=1)
+        tic = perf_counter()
         self.client.put_tensor(input_key, inputs.astype(np.float32))
         self.client.run_model(model_name, inputs=[input_key], 
                               outputs=[output_key])
         pred = self.client.get_tensor(output_key)
+        toc = perf_counter()
+        self.times["tot_infer"] += toc - tic
+        self.times["infer"].append(toc - tic)
         local_mse = ((outputs.flatten() - pred.flatten())**2).mean()
         avg_mse = comm.allreduce(local_mse)/self.size
         return avg_mse
     
     # Collect timing statistics across ranks
     def collect_stats(self, comm, mpi_ops):
-        """Collect timing statistics across ranks with MPI
-        """
         for _, (key, val) in enumerate(self.times.items()):
-            if (key=="train"):
+            if (key=="train" or key=="infer"):
                 collected_arr = np.zeros((len(val)*comm.Get_size()))
                 comm.Gather(np.array(val),collected_arr,root=0)
                 avg = np.mean(collected_arr)
@@ -189,9 +196,7 @@ class SmartRedisClient:
                            f"max = {val['max'][0]:>8e} , " + \
                            f"avg = {val['avg']:>8e} , " + \
                            f"std = {val['std']:>8e} "
-                           #f"sum = {val["sum"]:>8e}"
             print(f"SmartRedis {key} [s] " + stats_string)
-
 
 # Generate training data for each model
 def generate_training_data(args, rank: int, step: Optional[int] = 0) -> Tuple[np.ndarray, dict]:
@@ -217,6 +222,26 @@ def generate_training_data(args, rank: int, step: Optional[int] = 0) -> Tuple[np
     }
     return data, return_dict
 
+# Print FOM
+def print_fom(time2sol: float, train_data_sz: float, ssim_stats: dict):
+    print(f"Time to solution [s]: {time2sol:>.3f}")
+    total_sr_time = ssim_stats["tot_meta"]["max"][0] \
+                    + ssim_stats["tot_train"]["max"][0] \
+                    + ssim_stats["tot_infer"]["max"][0]
+    rel_sr_time = total_sr_time/time2sol*100
+    rel_meta_time = ssim_stats["tot_meta"]["max"][0]/time2sol*100
+    rel_train_time = ssim_stats["tot_train"]["max"][0]/time2sol*100
+    rel_infer_time = ssim_stats["tot_infer"]["max"][0]/time2sol*100
+    print(f"Relative total overhead [%]: {rel_sr_time:>.3f}")
+    print(f"Relative meta data overhead [%]: {rel_meta_time:>.3f}")
+    print(f"Relative train overhead [%]: {rel_train_time:>.3f}")
+    print(f"Relative infer overhead [%]: {rel_infer_time:>.3f}")
+    string = f": min = {train_data_sz/ssim_stats['train']['max'][0]:>4e} , " + \
+             f"max = {train_data_sz/ssim_stats['train']['min'][0]:>4e} , " + \
+             f"avg = {train_data_sz/ssim_stats['train']['avg']:>4e}"
+    print(f"Train data throughput [GB/s] " + string)
+
+# Main data producer function
 def main():
     """Emulate a data producing simulation for online training with SmartSim/SmartRedis
     """
@@ -232,7 +257,7 @@ def main():
     parser = ArgumentParser(description='SmartRedis Data Producer')
     parser.add_argument('--model', default="mlp", type=str, help='ML model identifier (mlp, quadconv, gnn)')
     parser.add_argument('--problem_size', default="small", type=str, help='Size of problem to emulate (small, medium, large)')
-    parser.add_argument('--tolerance', default=1.0e-2, type=float, help='ML model convergence tolerance')
+    parser.add_argument('--tolerance', default=0.01, type=float, help='ML model convergence tolerance')
     parser.add_argument('--db_launch', default="colocated", type=str, help='Database deployment (colocated, clustered)')
     parser.add_argument('--db_nodes', default=1, type=int, help='Number of database nodes')
     parser.add_argument('--ppn', default=4, type=int, help='Number of processes per node')
@@ -261,6 +286,7 @@ def main():
     # Emulate integration of PDEs with a do loop
     numts = 1000
     success = 0
+    tic_loop = perf_counter()
     for step in range(numts):
         # First off check if ML is done training, if so exit from loop
         #if (client.check_run()): 
@@ -294,19 +320,18 @@ def main():
             print(f'All ranks finished sending training data', flush=True)
         client.send_step(step)
 
-        # Exit is model has converged to tolerence for 5 consecutive checks
+        # Exit if model has converged to tolerence for 5 consecutive checks
         if success>=5: 
             if rank==0:
-                print("Model has converged to tolerence for 5 consecutive checks", flush=True)
+                print("\nModel has converged to tolerence for 5 consecutive checks", flush=True)
             client.stop_train(comm)
-            exit
+            break
 
-    comm.Barrier()
-    if (rank==0):
-        print("\nExited time step loop\n", flush=True)
+    toc_loop = perf_counter()
+    time_to_solution = toc_loop - tic_loop
 
-    # Accumulate timing data and print summary
-    if (rank==0):
+    # Accumulate timing data for client and print summary
+    if rank==0:
         print("Summary of timing data:", flush=True)
     mpi_ops = {
         "sum": MPI.SUM,
@@ -317,6 +342,11 @@ def main():
     if (rank==0):
         client.print_stats()
 
+    # Print FOM
+    train_array_sz = train_array.itemsize * train_array.size / 1024 / 1024 / 1024
+    if rank==0:
+        print("\nFOM:")
+        print_fom(time_to_solution, train_array_sz, client.time_stats)
 
 
 if __name__ == "__main__":

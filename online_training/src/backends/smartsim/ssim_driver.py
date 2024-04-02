@@ -45,6 +45,7 @@ def launch_coDB(cfg, nodelist, nNodes):
                            run_command='mpirun',
                            run_args={"-n" : cfg.run_args.simprocs},
                            env_vars=None)
+        sim_settings.add_exe_args(cfg.sim.arguments)
     elif (cfg.database.launcher=='pbs'):
         sim_settings = PalsMpiexecSettings(
                            client_exe,

@@ -137,7 +137,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             t_data.i_meta = t_data.i_meta + 1
             if (tmp[0] < 0.5):
                 if (comm.rank == 0):
-                    print("Simulation says time to quit training ... \n", flush=True)
+                    print("\nSimulation says time to quit training ... \n", flush=True)
                 break
 
         # Get time step number from database
