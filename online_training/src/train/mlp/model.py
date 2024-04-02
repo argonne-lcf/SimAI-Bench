@@ -266,7 +266,7 @@ class MLP(nn.Module):
                                     for key in keys], dim=0)
         rtime = perf_counter() - rtime
 
-        concat_tensor = self.online_scaler(comm, client, concat_tensor)
+        #concat_tensor = self.online_scaler(comm, client, concat_tensor)
 
         if (cfg.precision == "fp32" or cfg.precision == "tf32"):
             concat_tensor = concat_tensor.type(torch.float32)

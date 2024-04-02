@@ -15,7 +15,7 @@ echo Number of ML ranks: $ML_RANKS
 echo
 
 # Run
-SIM_ARGS="--model\=mlp --problem_size\=small --db_launch\=colocated --ppn\=${SIM_RANKS} --reproducibility\=True"
+SIM_ARGS="--model\=mlp --problem_size\=small --db_launch\=colocated --ppn\=${SIM_RANKS}  --reproducibility\=True --tolerance\=0.005"
 python $DRIVER \
     database.network_interface=lo database.launcher=local \
     sim.executable=$SIM_EXE sim.arguments="${SIM_ARGS}" \

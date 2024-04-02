@@ -121,7 +121,7 @@ def launch_coDB(cfg, nodelist, nNodes):
                                       exe_args=ml_exe,
                                       run_command='mpirun',
                                       run_args={"-n" : cfg.run_args.mlprocs},
-                                      env_vars={'SSDB':SSDB})
+                                      env_vars={'SSDB' : SSDB})
         elif (cfg.database.launcher=='pbs'):
             ml_settings = PalsMpiexecSettings('python', 
                                               exe_args=ml_exe,

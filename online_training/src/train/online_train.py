@@ -165,7 +165,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         
         # Print epoch number
         if (comm.rank == 0):
-            print(f"\n Epoch {iepoch+1} of {cfg.epochs}")
+            print(f"\n Epoch {iepoch+1}")
             print("-------------------------------", flush=True)
         
         # Perform training step
@@ -232,29 +232,9 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                 t_data.t_val = t_data.t_val + (toc_v - tic_v)
                 t_data.i_val = t_data.i_val + 1
             if comm.rank == 0: 
-                print(f"Validation set: | Epoch: {iepoch+1} | Average accuracy: {global_val_acc:>8e} | Average Loss: {global_val_loss:>8e}")        
-        
-        # Time entire loop
-        toc_l = perf_counter()
-        if (iepoch>0):
-            t_data.t_tot = t_data.t_tot + (toc_l - tic_l)
-        
-        # Check if tolerance on loss is satisfied
-        if (global_loss <= cfg.tolerance):
-            if (comm.rank == 0):
-                print("\nConvergence tolerance met. Stopping training loop. \n", flush=True)
-            iTest = True
-            break
-        
-        # Check if max number of epochs is reached
-        if (iepoch >= cfg.epochs-1):
-            if (comm.rank == 0):
-                print("\nMax number of epochs reached. Stopping training loop. \n", flush=True)
-            iTest = True
-            break
+                print(f"Validation set: | Epoch: {iepoch+1} | Average accuracy: {global_val_acc:>8e} | Average Loss: {global_val_loss:>8e}") 
 
         # Share model checkpoint
-        """
         if ((iepoch+1)%cfg.online.checkpoints==0):
             if (comm.rankl==0):
                 if (cfg.distributed=="ddp"):
@@ -262,62 +242,19 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                     buffer = io.BytesIO()
                     torch.jit.save(jit_model, buffer)
                     model_bytes = buffer.getvalue()
-                    jit_model(testData)
+                if client.client.model_exists(cfg.model):
+                    client.client.delete_model(cfg.model)
                 client.client.set_model(cfg.model, model_bytes,
                                         "TORCH", "CPU")
             if (comm.rank==0):
-                print("Shared model checkpoint", flush=True)
-        """
+                print("\nShared model checkpoint", flush=True)
+
+        # Time entire loop
+        toc_l = perf_counter()
+        if (iepoch>0):
+            t_data.t_tot = t_data.t_tot + (toc_l - tic_l)
 
         iepoch = iepoch + 1 
-
-
-    # Perform testing on a new snapshot
-    if (iTest):
-        if (comm.rank==0):
-            print("\nTesting model\n-------------------------------", flush=True)
- 
-        # Wait for new data to be sent to DB
-        while True:
-            if (client.client.poll_tensor("step",0,1)):
-                tmp = client.client.get_tensor('step')
-            
-            if (istep != tmp[0]):
-                istep = tmp[0]
-                if (comm.rank == 0):
-                    print(f"Working with time step {istep} \n", flush=True)
-                break
-
-        # Create dataset, samples and loader for the test data
-        test_dataset = KeyDataset(sim_rank_list,client.head_rank,istep,client.dataOverWr)
-        test_tensor_loader, test_sampler, _ = setup_online_dataloaders(cfg, comm, test_dataset, client.tensor_batch, 
-                                                                       [len(sim_rank_list), 0])
-
-        # Call testing function
-        running_loss = 0.
-        running_acc = 0.
-        for _, tensor_keys in enumerate(test_tensor_loader):
-            if (cfg.distributed=='horovod'):
-                test_loader, rtime = model.online_dataloader(cfg, client, comm, tensor_keys)
-            elif (cfg.distributed=='ddp'):
-                test_loader, rtime = model.module.online_dataloader(cfg, client, comm, tensor_keys)
-            running_acc, running_loss, testData = test(comm, model, test_loader, 
-                                                       mixed_dtype, cfg)
-            running_loss += running_loss
-            running_acc += running_acc
-        test_loss = running_loss / len(test_tensor_loader)
-        global_test_loss = metric_average(comm, test_loss)
-        test_acc = running_acc / len(test_tensor_loader)
-        global_test_acc = metric_average(comm, test_acc)
-        if comm.rank == 0: 
-            print(f"Test set: Average accuracy: {global_test_acc} | Average Loss: {global_test_loss:>8e}")        
-
-    # Tell simulation to quit
-    if (comm.rankl==0 and rerun_check!=0):
-        if (comm.rank==0): 
-            print("Telling simulation to quit ... \n")
-        arrMLrun = np.zeros(2)
-        client.client.put_tensor("check-run",arrMLrun)
  
     return model, testData
 

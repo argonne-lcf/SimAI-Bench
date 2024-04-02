@@ -13,6 +13,7 @@ class SmartRedisClient:
         self.db_launch = args.db_launch
         self.db_nodes = args.db_nodes
         self.rank = rank
+        self.size = size
         self.ppn = args.ppn
         self.times = {
             "init": 0.,
@@ -67,7 +68,7 @@ class SmartRedisClient:
             toc = perf_counter()
             self.times["tot_meta"] += toc - tic
 
-            # Write check-run
+            # Write overwrite tensor
             tic = perf_counter()
             self.client.put_tensor('tensor-ow', arr)
             toc = perf_counter()
@@ -87,6 +88,20 @@ class SmartRedisClient:
             return True
         else:
             return False
+    
+    # Signal to training sim is exiting
+    def stop_train(self, comm):
+        if (self.rank%self.ppn == 0):
+            # Run-check
+            arr = np.array([0, 0], dtype=np.int64)
+            tic = perf_counter()
+            self.client.put_tensor('check-run', arr)
+            toc = perf_counter()
+            self.times["tot_meta"] += toc - tic
+
+        comm.Barrier()
+        if (self.rank==0):
+            print('Told training to exit \n', flush=True)
         
     # Send training snapshot
     def send_snapshot(self, array: np.ndarray, step: int):
@@ -107,7 +122,33 @@ class SmartRedisClient:
             self.client.put_tensor('step', step_arr)
             toc = perf_counter()
             self.times["tot_meta"] += toc - tic
-
+    
+    # Check to see if model exists in DB
+    def model_exists(self, comm, model_name: str) -> bool:
+        local_exists = 1 if self.client.model_exists(model_name) else 0
+        global_exists = comm.allreduce(local_exists)
+        if global_exists==self.size:
+            if self.rank == 0:
+                print("\nFound model checkpoint in DB\n", flush=True)
+            return True
+        else:
+            return False
+        
+    # Perform inference with model on DB
+    def infer_model(self, comm, model_name: str, inputs: np.ndarray,
+                    outputs: np.ndarray) -> float:
+        input_key = f"{model_name}_inputs_{self.rank}"
+        output_key = f"{model_name}_outputs_{self.rank}"
+        if inputs.ndim<2:
+            inputs = np.expand_dims(inputs, axis=1)
+        self.client.put_tensor(input_key, inputs.astype(np.float32))
+        self.client.run_model(model_name, inputs=[input_key], 
+                              outputs=[output_key])
+        pred = self.client.get_tensor(output_key)
+        local_mse = ((outputs.flatten() - pred.flatten())**2).mean()
+        avg_mse = comm.allreduce(local_mse)/self.size
+        return avg_mse
+    
     # Collect timing statistics across ranks
     def collect_stats(self, comm, mpi_ops):
         """Collect timing statistics across ranks with MPI
@@ -166,6 +207,7 @@ def generate_training_data(args, rank: int, step: Optional[int] = 0) -> Tuple[np
             ndTot = 2
             x = rng.uniform(low=0.0, high=2*PI, size=n_samples)
             y = np.sin(x)+0.1*np.sin(4*PI*x)
+            y = (y - (-1.0875)) / (1.0986 - (-1.0875)) # min-max scaling
             data = np.vstack((x,y)).T
 
     return_dict = {
@@ -190,6 +232,7 @@ def main():
     parser = ArgumentParser(description='SmartRedis Data Producer')
     parser.add_argument('--model', default="mlp", type=str, help='ML model identifier (mlp, quadconv, gnn)')
     parser.add_argument('--problem_size', default="small", type=str, help='Size of problem to emulate (small, medium, large)')
+    parser.add_argument('--tolerance', default=1.0e-2, type=float, help='ML model convergence tolerance')
     parser.add_argument('--db_launch', default="colocated", type=str, help='Database deployment (colocated, clustered)')
     parser.add_argument('--db_nodes', default=1, type=int, help='Number of database nodes')
     parser.add_argument('--ppn', default=4, type=int, help='Number of processes per node')
@@ -217,6 +260,7 @@ def main():
 
     # Emulate integration of PDEs with a do loop
     numts = 1000
+    success = 0
     for step in range(numts):
         # First off check if ML is done training, if so exit from loop
         if (client.check_run()): 
@@ -229,12 +273,33 @@ def main():
         if not args.reproducibility:
             train_array, _ = generate_training_data(args, rank, step)
 
-        # Send training data to database
+        # Check if model exists to perform inference
+        exists = client.model_exists(comm, args.model)
+        if exists:
+            if (args.problem_size=="small"):
+                inputs = train_array[:,0]
+                outputs = train_array[:,1]
+            error = client.infer_model(comm, args.model, inputs, outputs)
+            if (rank==0):
+                print(f"Performed inference with error={error:>8e}", flush=True)
+            if error <= args.tolerance:
+                success += 1
+            else:
+                success = 0
+
+        # Send training data
         client.send_snapshot(train_array, step)
         comm.Barrier()
         if (rank==0):
             print(f'All ranks finished sending training data', flush=True)
         client.send_step(step)
+
+        # Exit is model has converged to tolerence for 5 consecutive checks
+        if success>=5: 
+            if rank==0:
+                print("Model has converged to tolerence for 5 consecutive checks", flush=True)
+            client.stop_train(comm)
+            exit
 
     comm.Barrier()
     if (rank==0):
