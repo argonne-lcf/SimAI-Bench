@@ -262,7 +262,7 @@ def main():
     parser.add_argument('--db_nodes', default=1, type=int, help='Number of database nodes')
     parser.add_argument('--ppn', default=4, type=int, help='Number of processes per node')
     parser.add_argument('--logging', default='no', help='Level of performance logging (no, verbose)')
-    parser.add_argument('--reproducibility', default='False', help='Send a single array for reproducible results')
+    parser.add_argument('--reproducibility', type=str, default='False', help='Send a single array for reproducible results')
     args = parser.parse_args()
 
     rankl = rank % args.ppn
@@ -296,7 +296,7 @@ def main():
 
         # Sleep for a few seconds to emulate the time required by PDE integration
         sleep(1)
-        if not args.reproducibility:
+        if args.reproducibility=="False":
             train_array, _ = generate_training_data(args, rank, step)
 
         # Check if model exists to perform inference

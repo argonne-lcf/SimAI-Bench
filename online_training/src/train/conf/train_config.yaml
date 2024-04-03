@@ -32,6 +32,7 @@ online:
     smartsim:
         db_launch: "" # colocated,clustered - deployment method of SmartSim database
         db_nodes: 1 # int - number of nodes dabase is sharded across. Always 1 for colocated DB.
+        inference_device: "CPU" # CPU,GPU,GPU:# - device string for inference with RedisAI from data producer
  
 # Model specific config
 mlp:

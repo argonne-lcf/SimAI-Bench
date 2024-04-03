@@ -89,18 +89,6 @@ def launch_coDB(cfg, nodelist, nNodes):
                 **kwargs
                 )
 
-    # Load a ML model for inference
-    if (cfg.inference.model_path):
-        colo_model.add_ml_model('model',
-                                cfg.inference.backend,
-                                model=None,  # this is used if model is in memory
-                                model_path=cfg.inference.model_path,
-                                device=cfg.inference.device,
-                                batch_size=cfg.inference.batch,
-                                min_batch_size=cfg.inference.batch,
-                                devices_per_node=cfg.inference.devices_per_node,
-                                inputs=None, outputs=None)
-
     # Start the co-located model
     block = False if cfg.train.executable else True
     print("Launching simulation and SmartSim co-located DB ... ")
@@ -210,18 +198,6 @@ def launch_clDB(cfg, nodelist, nNodes):
         run_settings.set_hostlist(simNodes)
         run_settings.set_cpu_binding_type(cfg.run_args.sim_cpu_bind)
         client_exp = exp.create_model("client", run_settings)
-   
-    # Add the ML model
-    if (cfg.inference.model_path):
-        colo_model.add_ml_model('model',
-                                cfg.inference.backend,
-                                model=None,  # this is used if model is in memory
-                                model_path=cfg.inference.model_path,
-                                device=cfg.inference.device,
-                                batch_size=cfg.inference.batch,
-                                min_batch_size=cfg.inference.batch,
-                                devices_per_node=cfg.inference.devices_per_node,
-                                inputs=None, outputs=None )
 
     # Start the client model
     print("Launching the client ...")

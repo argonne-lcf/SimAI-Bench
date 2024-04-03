@@ -4,7 +4,7 @@ database:
     backend: "redis" # redis,keydb - launch Redis of KeyDB database
     deployment: "colocated" # colocated,clustered - deployment of database
     port: 6780
-    network_interface: "lo" # lo,hsn0,uds - network used for data transfer
+    network_interface: "uds" # lo,hsn0,uds - network used for data transfer
     # On Polaris: lo hsn0 for clustered, lo and uds for co-located
     exp_name: "SimAI-Bench" # string
     launcher: "pbs" # pbs, local - job scheduler
@@ -21,9 +21,9 @@ run_args:
     mlprocs: 1 # integer - number of MPI processes for ML training
     mlprocs_pn: 1 # integer - number of MPI processes per node for ML training
     dbprocs_pn: 1 # integer - number of threads for database
-    sim_cpu_bind: "none" # none, core, list, numa - CPU binding for simulation
-    ml_cpu_bind: "none" # none, core, list, numa - CPU binding for ML training
-    db_cpu_bind: "None" # ID of CPU logical devices on which to pin the Orchestrator
+    sim_cpu_bind: "list:1,8,16,24" # none, core, list, numa - CPU binding for simulation
+    ml_cpu_bind: "list:4,12" # none, core, list, numa - CPU binding for ML training
+    db_cpu_bind: [28,29,30,31] # ID of CPU logical devices on which to pin the Orchestrator
                         # empty list - [0,1,2,...,dbprocs_pn-1]
                         # None - disable pinning
                         # list of ints - pinning to the specified CPU ID

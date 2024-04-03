@@ -2,7 +2,7 @@
 ppn: 1 # integer - number of MPI processes per node for ML training
 ppd: 1 # integer - number of MPI processes per device for ML training
 logging: "debug" # no, debug, verbose-perf - type of logging desired
-device: "cpu" # cpu, cuda, xpu - device to train on
+device: "cuda" # cpu, cuda, xpu - device to train on
 distributed: "ddp" # horovod, ddp - distributed training library
 model: "mlp" # mlp, gnn - model descriptor
 data_path: "" # string, synthetic - path to training data to load
@@ -32,7 +32,7 @@ online:
     smartsim:
         db_launch: "" # colocated,clustered - deployment method of SmartSim database
         db_nodes: 1 # int - number of nodes dabase is sharded across. Always 1 for colocated DB.
-        inference_device: "CPU" # CPU,GPU,GPU:# - device string for inference with RedisAI from data producer
+        inference_device: "GPU:3" # CPU,GPU,GPU:# - device string for inference with RedisAI from data producer
  
 # Model specific config
 mlp:

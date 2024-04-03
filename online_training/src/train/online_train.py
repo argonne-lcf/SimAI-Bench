@@ -243,7 +243,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                 if client.client.model_exists(cfg.model):
                     client.client.delete_model(cfg.model)
                 client.client.set_model(cfg.model, model_bytes,
-                                        "TORCH", "CPU")
+                                        "TORCH", cfg.online.smartsim.inference_device)
             if (comm.rank==0):
                 print("\nShared model checkpoint", flush=True)
 
