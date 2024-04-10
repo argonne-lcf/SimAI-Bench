@@ -109,7 +109,7 @@ class SmartRedisClient:
     def send_snapshot(self, array: np.ndarray, step: int):
         key = 'y.'+str(self.rank) #+'.'+str(step)
         if (self.rank==0):
-            print(f'Sending training data with key {key} and shape {array.shape}')
+            print(f'Sending training data with key {key} and shape {array.shape}', flush=True)
         tic = perf_counter()
         self.client.put_tensor(key, array)
         toc = perf_counter()
@@ -288,12 +288,6 @@ def main():
     success = 0
     tic_loop = perf_counter()
     for step in range(numts):
-        # First off check if ML is done training, if so exit from loop
-        #if (client.check_run()): 
-        #    if (rank==0):
-        #        print("ML says time to stop running", flush=True)
-        #    break
-
         # Sleep for a few seconds to emulate the time required by PDE integration
         sleep(1)
         if args.reproducibility=="False":

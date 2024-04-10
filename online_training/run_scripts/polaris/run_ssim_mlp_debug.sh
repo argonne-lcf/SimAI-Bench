@@ -3,7 +3,7 @@
 # Set env
 module load conda/2023-10-04
 conda activate
-source /eagle/datascience/balin/Polaris/SmartSim_envs/venv_conda-2023-10-04/_ssim_env/bin/activate
+source /eagle/datascience/balin/Polaris/SmartSim_envs/venv_conda-2023-10-04/_ssim_env_24_4/bin/activate
 echo Loaded modules:
 module list
 
@@ -29,7 +29,7 @@ echo Number of ML total ranks: $ML_RANKS
 echo
 
 # Sent env vars
-export SR_LOG_FILE=stdout
+#export SR_LOG_FILE=stdout
 export SR_LOG_LEVEL=QUIET
 export SR_CONN_INTERVAL=10 # default is 1000 ms
 export SR_CONN_TIMEOUT=1000 # default is 100 ms
