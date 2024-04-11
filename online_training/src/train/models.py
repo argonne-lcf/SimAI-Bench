@@ -27,10 +27,11 @@ def load_model(cfg: DictConfig, comm, client, rng, t_data) -> Tuple[nn.Module, n
     # Instantiate model
     if (cfg.model=="mlp"):
         model  = MLP(inputDim=cfg.mlp.inputs, outputDim=cfg.mlp.outputs,
-                          numNeurons=cfg.mlp.neurons, numLayers=cfg.mlp.layers)
+                     numNeurons=cfg.mlp.neurons, numLayers=cfg.mlp.layers)
     elif (cfg.model=="gnn"):
         model = GNN(cfg)
-        model.setup_local_graph(cfg, comm, client)
+        model.setup_local_graph(cfg, client, comm.rank, t_data)
+
     
     n_params = count_weights(model)
     if (comm.rank == 0):

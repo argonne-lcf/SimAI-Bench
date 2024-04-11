@@ -281,12 +281,11 @@ class MLP(nn.Module):
                                  shuffle=shuffle, batch_size=cfg.mini_batch)
         return data_loader, rtime
 
-    def trace_model(self, data: torch.Tensor):
+    def script_model(self):
         """
-        Return a JIT traced version of the model
+        Return a JIT scripted version of the model
         """
-        jit_model = torch.jit.trace(self, data)
-        jit_model(data)
+        jit_model = torch.jit.script(self)
         return jit_model
 
     def save_checkpoint(self, fname: str, data: torch.Tensor):
@@ -294,7 +293,7 @@ class MLP(nn.Module):
         Save model checkpoint and min-max scaling
         """
         torch.save(self.state_dict(), f"{fname}.pt", _use_new_zipfile_serialization=False)
-        jit_model = self.trace_model(data)
+        jit_model = self.script_model()
         torch.jit.save(jit_model, f"{fname}_jit.pt")
 
         if self.scaler_fit:

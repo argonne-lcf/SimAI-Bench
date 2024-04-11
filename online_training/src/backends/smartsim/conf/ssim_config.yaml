@@ -39,6 +39,7 @@ sim:
 train:
     executable: "" # string - path to ML training executable
     affinity: "" # string - GPU affinity script for training
-    config: "" # string - override path for training config file
+    config_path: "" # string - override path for training config file
+    config_name: "" # string - override name of training config file
 
    

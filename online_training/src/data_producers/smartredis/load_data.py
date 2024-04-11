@@ -3,6 +3,8 @@ from math import pi as PI
 from time import perf_counter, sleep
 from typing import Tuple, Optional
 import numpy as np
+import torch
+from torch_geometric.nn import knn_graph
 
 from smartredis import Client
 
@@ -79,6 +81,16 @@ class SmartRedisClient:
         comm.Barrier()
         if (self.rank==0):
             print('Metadata sent to DB \n', flush=True)
+
+    # Set up training case and write metadata
+    def setup_graph(self, problem: str, rank: int, coords: Optional[np.ndarray] = None):
+        if (problem=="debug"):
+            edge_index = knn_graph(torch.from_numpy(coords), k=2, loop=False).numpy()
+        tic = perf_counter()
+        self.client.put_tensor(f'pos_node_{rank}', coords)
+        self.client.put_tensor(f'edge_index_{rank}', edge_index)
+        toc = perf_counter()
+        self.times["tot_meta"] += toc - tic
 
     # Check if should keep running
     def check_run(self) -> bool:
@@ -204,16 +216,14 @@ def generate_training_data(args, rank: int, step: Optional[int] = 0) -> Tuple[np
     """
     random_seed = 12345 + 1000*rank + 100*step
     rng = np.random.default_rng(seed=random_seed)
-    # For the MLP model, train versions of y=sin(x)
-    if (args.model=="mlp"):
-        if (args.problem_size=="small"):
-            n_samples = 512
-            ndIn = 1
-            ndTot = 2
-            x = rng.uniform(low=0.0, high=2*PI, size=n_samples)
-            y = np.sin(x)+0.1*np.sin(4*PI*x)
-            y = (y - (-1.0875)) / (1.0986 - (-1.0875)) # min-max scaling
-            data = np.vstack((x,y)).T
+    if (args.problem_size=="debug"):
+        n_samples = 512
+        ndIn = 1
+        ndTot = 2
+        x = rng.uniform(low=0.0, high=2*PI, size=n_samples)
+        y = np.sin(x)+0.1*np.sin(4*PI*x)
+        y = (y - (-1.0875)) / (1.0986 - (-1.0875)) # min-max scaling
+        data = np.vstack((x,y)).T
 
     return_dict = {
         "n_samples": n_samples,
@@ -256,7 +266,7 @@ def main():
     # Parse arguments
     parser = ArgumentParser(description='SmartRedis Data Producer')
     parser.add_argument('--model', default="mlp", type=str, help='ML model identifier (mlp, quadconv, gnn)')
-    parser.add_argument('--problem_size', default="small", type=str, help='Size of problem to emulate (small, medium, large)')
+    parser.add_argument('--problem_size', default="debug", type=str, help='Size of problem to emulate (debug)')
     parser.add_argument('--tolerance', default=0.01, type=float, help='ML model convergence tolerance')
     parser.add_argument('--db_launch', default="colocated", type=str, help='Database deployment (colocated, clustered)')
     parser.add_argument('--db_nodes', default=1, type=int, help='Number of database nodes')
@@ -282,6 +292,8 @@ def main():
     # Send training metadata
     client.setup(comm, stats["n_samples"], 
                  stats["n_dim_tot"], stats["n_dim_in"])
+    if (args.model=="gnn" and args.problem_size=="debug"):
+        client.setup_graph(args.problem_size, rank, train_array[:,0])
 
     # Emulate integration of PDEs with a do loop
     numts = 1000
@@ -296,7 +308,7 @@ def main():
         # Check if model exists to perform inference
         exists = client.model_exists(comm, args.model)
         if exists:
-            if (args.problem_size=="small"):
+            if (args.problem_size=="debug"):
                 inputs = train_array[:,0]
                 outputs = train_array[:,1]
             error = client.infer_model(comm, args.model, inputs, outputs)

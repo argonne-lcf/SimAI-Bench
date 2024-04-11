@@ -100,10 +100,10 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                                              num_groups=1)
 
     # Create training and validation Datasets
-    tot_db_tensors = client.num_db_tensors*client.nfilters
+    tot_db_tensors = client.num_db_tensors
     sim_rank_list = np.arange(0,tot_db_tensors,dtype=int)
     num_val_tensors = int(tot_db_tensors*cfg.validation_split)
-    num_train_tensors = client.num_db_tensors*client.nfilters - num_val_tensors
+    num_train_tensors = tot_db_tensors - num_val_tensors
     tensor_split = [num_train_tensors, num_val_tensors]
     if (num_val_tensors==0 and cfg.validation_split>0):
         if (comm.rank==0): print("Insufficient number of tensors for validation -- skipping it")
@@ -236,7 +236,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         if ((iepoch+1)%cfg.online.checkpoints==0):
             if (comm.rankl==0):
                 if (cfg.distributed=="ddp"):
-                    jit_model = model.module.trace_model(testData)
+                    jit_model = model.module.script_model()
                     buffer = io.BytesIO()
                     torch.jit.save(jit_model, buffer)
                     model_bytes = buffer.getvalue()

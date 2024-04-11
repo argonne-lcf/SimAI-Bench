@@ -1,12 +1,11 @@
 from __future__ import absolute_import, division, print_function, annotations
-from typing import Optional, Union, Callable
+from typing import Optional, Union, Callable, List
 import torch
 from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 try:
     import torch_geometric.nn as tgnn
-    from torch_scatter import scatter_mean
     from torch_geometric.nn.conv import MessagePassing
     from torch_geometric.typing import Adj, OptTensor, PairTensor
     from pooling import TopKPooling_Mod, avg_pool_mod, avg_pool_mod_no_x
@@ -19,14 +18,16 @@ class mp_gnn(torch.nn.Module):
                  hidden_channels: int, 
                  output_channels: int, 
                  n_mlp_layers: List[int], 
-                 activation: Callable):
+                 activation: Callable,
+                 spatial_dim: int):
         super().__init__()
         
         self.input_channels = input_channels
         self.hidden_channels = hidden_channels
         self.output_channels = output_channels 
-        self.n_mlp_layers = n_mlp_layers
+        self.n_mlp_layers = list(n_mlp_layers)
         self.act = activation
+        self.spatial_dim = spatial_dim
 
         # ~~~~ node encoder 
         self.node_encoder = torch.nn.ModuleList()
@@ -54,26 +55,29 @@ class mp_gnn(torch.nn.Module):
         self.mp_layer = mp_layer(channels = hidden_channels,
                                  n_mlp_layers_edge = self.n_mlp_layers[1], 
                                  n_mlp_layers_node = self.n_mlp_layers[2],
-                                 activation = self.act)
+                                 activation = self.act,
+                                 spatial_dim = self.spatial_dim)
         
         self.reset_parameters()
 
     def forward(
             self,
             x: Tensor,
-            edge_index: LongTensor,
+            edge_index: torch.LongTensor,
             edge_attr: Tensor,
             pos: Tensor,
-            batch: Optional[LongTensor] = None) -> Tensor:
+            batch: Optional[torch.LongTensor] = None) -> Tensor:
 
         if batch is None:
             batch = edge_index.new_zeros(x.size(0))
         
         # ~~~~ Node Encoder: 
         n_layers = self.n_mlp_layers[0]
-        for i in range(n_layers):
-            x = self.node_encoder[i](x)
-            if i < n_layers - 1:
+        #for i in range(n_layers):
+        for index, encoder in enumerate(self.node_encoder):
+            #x = self.node_encoder[i](x)
+            x = encoder(x)
+            if index < n_layers - 1:
                 x = self.act(x)
 
         # ~~~~ Message passing: 
@@ -81,9 +85,11 @@ class mp_gnn(torch.nn.Module):
         
         # ~~~~ Node decoder:
         n_layers = self.n_mlp_layers[0]
-        for i in range(n_layers):
-            x = self.node_decoder[i](x)
-            if i < n_layers - 1:
+        #for i in range(n_layers):
+        for index, decoder in enumerate(self.node_decoder):
+            #x = self.node_decoder[i](x)
+            x = decoder(x)
+            if index < n_layers - 1:
                 x = self.act(x)
 
         return x 
@@ -113,7 +119,8 @@ class mp_layer(torch.nn.Module):
                  channels: int, 
                  n_mlp_layers_edge: int, 
                  n_mlp_layers_node: int,
-                 activation: Callable):
+                 activation: Callable,
+                 spatial_dim: int):
         super().__init__()
 
         self.edge_aggregator = EdgeAggregation()
@@ -121,11 +128,12 @@ class mp_layer(torch.nn.Module):
         self.n_mlp_layers_edge = n_mlp_layers_edge
         self.n_mlp_layers_node = n_mlp_layers_node
         self.act = activation
+        self.spatial_dim = spatial_dim
 
         self.edge_updater = torch.nn.ModuleList()
         for j in range(self.n_mlp_layers_edge):
             if j == 0:
-                input_features = self.channels*3 + 4 # extra 4 dims comes from edge_attr
+                input_features = self.channels*3 + (self.spatial_dim+1) # extra 4 dims comes from edge_attr
                 output_features = self.channels 
             else:
                 input_features = self.channels
@@ -147,10 +155,10 @@ class mp_layer(torch.nn.Module):
     def forward(
             self,
             x: Tensor,
-            edge_index: LongTensor,
+            edge_index: torch.LongTensor,
             edge_attr: Tensor,
             pos: Tensor,
-            batch: Optional[LongTensor] = None) -> Tensor:
+            batch: Optional[torch.LongTensor] = None) -> Tensor:
 
         if batch is None:
             batch = edge_index.new_zeros(x.size(0))
@@ -160,18 +168,22 @@ class mp_layer(torch.nn.Module):
         x_own = x[edge_index[1,:], :] 
         ea = torch.cat((edge_attr, x_nei, x_own, x_nei - x_own), dim=1)
         n_layers = self.n_mlp_layers_edge
-        for j in range(n_layers):
-            ea = self.edge_updater[j](ea) 
-            if j < n_layers - 1:
+        #for j in range(n_layers):
+        #    ea = self.edge_updater[j](ea)
+        for index, updater in enumerate(self.edge_updater):
+            ea = updater(ea) 
+            if index < n_layers - 1:
                 ea = self.act(ea)
 
         edge_agg = self.edge_aggregator(x, edge_index, ea)
 
         x = torch.cat((x, edge_agg), dim=1)
         n_layers = self.n_mlp_layers_node
-        for j in range(n_layers):
-            x = self.node_updater[j](x) 
-            if j < n_layers - 1:
+        #for j in range(n_layers):
+        #    x = self.node_updater[j](x) 
+        for index, updater in enumerate(self.node_updater):
+            x = updater(x) 
+            if index < n_layers - 1:
                 x = self.act(x)
 
         return x  

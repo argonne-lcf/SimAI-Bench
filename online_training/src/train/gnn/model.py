@@ -3,8 +3,9 @@
 ################################################
 ### Distributed GNN developed by Shivam Barwey at Argonne National Laboratory
 
+from time import perf_counter
 import yaml
-from typing import Optional
+from typing import Optional, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
@@ -35,10 +36,9 @@ class GNN(nn.Module):
         """
         super().__init__()
         # Build model
-        self.cfg = self.load_model_config(train_cfg.gnn.gnn_config)
-        self.input_channels = train_cfg.gnn.input_channels
-        self.output_channels = train_cfg.gnn.output_channels
-        self.model = self.build_model(self.input_channels, self.output_channels)
+        #self.cfg = self.load_model_config(train_cfg.gnn.gnn_config)
+        self.cfg = train_cfg.gnn
+        self.model = self.build_model()
 
         # Initialize local graph data structures
         self.graph_reduced = None
@@ -63,61 +63,51 @@ class GNN(nn.Module):
             raise ValueError(f"Config {config_path} is invalid.")
         return config
 
-    def build_model(self, input_channels: int, output_channels: int) -> nn.Module:
+    def build_model(self) -> nn.Module:
         """
         Build the GNN model
-        :param input_channels: Number of input channels
-        :param output_channels: Number of output channels
         :return: GNN model
         """
         activation = getattr(F, self.cfg["activation"])
-        model = mp_gnn(input_channels, 
-                           self.cfg["hidden_channels"], 
-                           output_channels, 
-                           self.cfg["n_mlp_layers"], 
-                           activation)
+        model = mp_gnn(self.cfg.input_channels, 
+                       self.cfg["hidden_channels"], 
+                       self.cfg.output_channels, 
+                       self.cfg["n_mlp_layers"], 
+                       activation,
+                       self.cfg.spatial_dim)
         return model
     
-    def setup_local_graph(self, train_cfg, comm, client):
+    def setup_local_graph(self, train_cfg, client, rank, t_data):
         """
         Setup the rank-local graph from the mesh data
         :param train_cfg: training config
         :param client: SmartRedis client class
         :param comm: MPI communicator class
         """
-        pos_key = 'pos_node_rank_%d_size_%d' %(comm.rank,comm.size)
-        edge_key = 'edge_index_rank_%d_size_%d' %(comm.rank,comm.size)
-        gid_key = 'global_ids_rank_%d_size_%d' %(comm.rank,comm.size)
-        lmask_key = 'local_unique_mask_rank_%d_size_%d' %(comm.rank,comm.size)
-        hmask_key = 'halo_unique_mask_rank_%d_size_%d' %(comm.rank,comm.size)
+        pos_key = f'pos_node_{rank}'
+        edge_key = f'edge_index_{rank}'
+        #gid_key = 'global_ids_rank_%d_size_%d' %(comm.rank,comm.size)
+        #lmask_key = 'local_unique_mask_rank_%d_size_%d' %(comm.rank,comm.size)
+        #hmask_key = 'halo_unique_mask_rank_%d_size_%d' %(comm.rank,comm.size)
 
-        if train_cfg.online.db_launch:
+        if train_cfg.online.driver=="smartsim":
             while True:
-                if (client.client.poll_tensor(hmask_key,0,1)):
+                if (client.client.poll_tensor(edge_key,0,1)):
                     break
-            pos = client.client.get_tensor(pos_key).astype('float32').T
-            gli = client.client.get_tensor(gid_key).astype('int64').reshape((-1,1))
-            ei = self.client.get_tensor(edge_key).astype('int64').T
-            local_unique_mask = np.squeeze(self.client.get_tensor(lmask_key).astype('int64'))
-            halo_unique_mask = np.array([])
-            if comm.size > 1:
-                halo_unique_mask = np.squeeze(self.client.get_tensor(hmask_key).astype('int64'))
+            rtime = perf_counter()
+            pos = client.client.get_tensor(pos_key).astype('float32')
+            ei = client.client.get_tensor(edge_key).astype('int64')
+            rtime = perf_counter() - rtime
+            t_data.t_meta = t_data.t_meta + rtime
+            t_data.i_meta = t_data.i_meta + 1
+            if len(pos.shape)<=1:
+                pos = pos[:,np.newaxis]
+            #gli = client.client.get_tensor(gid_key).astype('int64').reshape((-1,1))
+            #local_unique_mask = np.squeeze(self.client.get_tensor(lmask_key).astype('int64'))
+            #halo_unique_mask = np.array([])
+            #if comm.size > 1:
+            #    halo_unique_mask = np.squeeze(self.client.get_tensor(hmask_key).astype('int64'))
 
-            comm.comm.Barrier()
-            if (comm.rank == 0):
-                print("Loaded graph data")
-            
-            if (self.cfg["debug"]):
-                print(f'[{comm.rank}]: pos shape {pos.shape}')
-                np.savetxt(f"/eagle/datascience/balin/Nek/nekRS-ML/examples/periodicHill_gnn/pos_node_{RANK}",pos)
-                print(f'[{comm.rank}]: gli shape {gli.shape}')
-                np.savetxt(f"/eagle/datascience/balin/Nek/nekRS-ML/examples/periodicHill_gnn/global_ids_node_{RANK}",gli,fmt='%d')
-                print(f'[{comm.rank}]: ei shape {ei.shape}')
-                np.savetxt("/eagle/datascience/balin/Nek/nekRS-ML/examples/periodicHill_gnn/edge_index_{RANK}",ei.T,fmt='%d')
-                print(f'[{comm.rank}]: local_unique_mask shape {local_unique_mask.shape}')
-                np.savetxt(f"/eagle/datascience/balin/Nek/nekRS-ML/examples/periodicHill_gnn/local_unique_mask_{RANK}",local_unique_mask,fmt='%d')
-                print(f'[{comm.rank}]: halo_unique_mask shape {halo_unique_mask.shape}')
-                np.savetxt(f"/eagle/datascience/balin/Nek/nekRS-ML/examples/periodicHill_gnn/halo_unique_mask_{RANK}",halo_unique_mask,fmt='%d')
         else:
             main_path = train_cfg.data_path+"/"
             path_to_pos_full = main_path + pos_key
@@ -135,19 +125,23 @@ class GNN(nn.Module):
                 halo_unique_mask = np.loadtxt(path_to_unique_halo, dtype=np.int64)
 
         # Make the full graph
-        self.graph_full = Data(x = None, edge_index = torch.tensor(ei), pos = torch.tensor(pos), 
-                         global_ids = torch.tensor(gli.squeeze()), local_unique_mask = torch.tensor(local_unique_mask), 
-                         halo_unique_mask = torch.tensor(halo_unique_mask))
-        self.graph_full.edge_index = utils.remove_self_loops(self.graph_full.edge_index)[0]
-        self.graph_full.edge_index = utils.coalesce(self.graph_full.edge_index)
-        self.graph_full.edge_index = utils.to_undirected(self.graph_full.edge_index)
-        self.graph_full.local_ids = torch.tensor(range(self.graph_full.pos.shape[0]))
+        #self.graph_full = Data(x = None, edge_index = torch.tensor(ei), pos = torch.tensor(pos), 
+        #                 global_ids = torch.tensor(gli.squeeze()), local_unique_mask = torch.tensor(local_unique_mask), 
+        #                 halo_unique_mask = torch.tensor(halo_unique_mask))
+        #self.graph_full.edge_index = utils.remove_self_loops(self.graph_full.edge_index)[0]
+        #self.graph_full.edge_index = utils.coalesce(self.graph_full.edge_index)
+        #self.graph_full.edge_index = utils.to_undirected(self.graph_full.edge_index)
+        #self.graph_full.local_ids = torch.tensor(range(self.graph_full.pos.shape[0]))
 
         # Get reduced (non-overlapping) graph and indices to go from full to reduced  
-        self.graph_reduced, self.idx_full2reduced = gcon.get_reduced_graph(self.graph_full)
+        #self.graph_reduced, self.idx_full2reduced = gcon.get_reduced_graph(self.graph_full)
 
         # Get the indices to go from reduced back to full graph  
-        self.idx_reduced2full = gcon.get_upsample_indices(self.graph_full, self.graph_reduced, self.idx_full2reduced)
+        #self.idx_reduced2full = gcon.get_upsample_indices(self.graph_full, self.graph_reduced, self.idx_full2reduced)
+
+        self.graph_reduced = Data(x = None, 
+                                  edge_index = torch.tensor(ei), 
+                                  pos = torch.tensor(pos)) 
 
     def training_step(self, batch) -> torch.Tensor:
         """
@@ -205,7 +199,7 @@ class GNN(nn.Module):
         :return: numpy array with the rank-local training data 
         """
         n_nodes = self.graph_reduced.pos.shape[0]
-        data = np.float32(rng.normal(size=(n_nodes,self.input_channels+self.output_channels)))
+        data = np.float32(rng.normal(size=(n_nodes,self.cfg.input_channels+self.cfg.output_channels)))
         return data
     
     def load_data(self, cfg, comm) -> np.ndarray:
@@ -223,10 +217,10 @@ class GNN(nn.Module):
         path_to_y = main_path + y_key
         data_x = np.loadtxt(path_to_x, ndmin=2, dtype=np.float32)
         data_y = np.loadtxt(path_to_y, ndmin=2, dtype=np.float32)
-        assert data_x.shape[1] == self.input_channels, \
-            f"Created model with {self.input_channels} input channels, but loaded data has {data_x.shape[1]}"
-        assert data_y.shape[1] == self.output_channels, \
-            f"Created model with {self.output_channels} output channels, but loaded data has {data_y.shape[1]}"
+        assert data_x.shape[1] == self.cfg.input_channels, \
+            f"Created model with {self.cfg.input_channels} input channels, but loaded data has {data_x.shape[1]}"
+        assert data_y.shape[1] == self.cfg.output_channels, \
+            f"Created model with {self.cfg.output_channels} output channels, but loaded data has {data_y.shape[1]}"
 
         # Get data in reduced format (non-overlapping)
         data_x_reduced = data_x[self.idx_full2reduced, :]
@@ -253,8 +247,8 @@ class GNN(nn.Module):
         reduced_graph_dict = self.graph_reduced.to_dict()
         data_train_list = []
         data_temp = Data(   
-                            x = data[:,:self.input_channels], 
-                            y = data[:,self.input_channels:]
+                            x = data[:,:self.cfg.input_channels], 
+                            y = data[:,self.cfg.input_channels:]
                         )
         for key in reduced_graph_dict.keys():
             data_temp[key] = reduced_graph_dict[key]
@@ -265,8 +259,8 @@ class GNN(nn.Module):
         # Create validation dataset -- same as train data for now
         data_valid_list = []
         data_temp = Data(   
-                            x = data[:,:self.input_channels], 
-                            y = data[:,self.input_channels:]
+                            x = data[:,:self.cfg.input_channels], 
+                            y = data[:,self.cfg.input_channels:]
                         )
         for key in reduced_graph_dict.keys():
             data_temp[key] = reduced_graph_dict[key]
@@ -294,6 +288,55 @@ class GNN(nn.Module):
                 'samples': nVal
             }
         }
+    
+    def online_dataloader(self, cfg, client, comm, keys: list, shuffle: Optional[bool] = False) \
+                        -> Tuple[torch.utils.data.DataLoader, float]:
+        """
+        Load data from database and create on-rank data loader
+        """
+        if (cfg.logging=='debug'):
+            print(f'[{comm.rank}]: Grabbing tensors with key {keys}', flush=True)
+        rtime = perf_counter()
+        concat_tensor = torch.cat([torch.from_numpy(client.client.get_tensor(key).astype('float32')) \
+                                    for key in keys], dim=0)
+        rtime = perf_counter() - rtime
+
+        if (cfg.precision == "fp32" or cfg.precision == "tf32"):
+            concat_tensor = concat_tensor.type(torch.float32)
+        elif (cfg.precision == "fp64"):
+            concat_tensor = concat_tensor.type(torch.float64)
+        elif (cfg.precision == "fp16"):
+            concat_tensor = concat_tensor.type(torch.float16)
+        elif (cfg.precision == "bf16"):
+            concat_tensor = concat_tensor.type(torch.bfloat16)
+
+        # Populate edge_attrs
+        cart = Cartesian(norm=False, max_value = None, cat = False)
+        dist = Distance(norm = False, max_value = None, cat = True)
+        self.graph_reduced = cart(self.graph_reduced) # adds cartesian/component-wise distance
+        self.graph_reduced = dist(self.graph_reduced) # adds euclidean distance
+
+        # Create dataset
+        reduced_graph_dict = self.graph_reduced.to_dict()
+        data_list = []
+        data_temp = Data(   
+                            x = concat_tensor[:,:self.cfg.input_channels], 
+                            y = concat_tensor[:,self.cfg.input_channels:]
+                        )
+        for key in reduced_graph_dict.keys():
+            data_temp[key] = reduced_graph_dict[key]
+        data_list.append(data_temp)
+        dataset = data_list
+        data_loader = DataLoader(dataset, batch_size=cfg.mini_batch, 
+                                shuffle=False)
+        return data_loader, rtime
+    
+    def script_model(self):
+        """
+        Return a JIT traced version of the model
+        """
+        jit_model = torch.jit.script(self.model)
+        return jit_model
     
     def save_checkpoint(self, fname: str, data: torch.Tensor):
         torch.save(self.model.state_dict(), f"{fname}.pt", _use_new_zipfile_serialization=False)

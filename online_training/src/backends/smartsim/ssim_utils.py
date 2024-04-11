@@ -19,7 +19,6 @@ class SmartRedisClient:
         self.num_db_tensors = None
         self.head_rank = None
         self.tensor_batch = None
-        self.nfilters = 1
         self.dataOverWr = None
 
     # Initializa client

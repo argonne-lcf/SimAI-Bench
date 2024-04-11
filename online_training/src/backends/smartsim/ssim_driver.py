@@ -98,7 +98,8 @@ def launch_coDB(cfg, nodelist, nNodes):
     # Setup and launch the training script
     if (cfg.train.executable):
         ml_exe = cfg.train.executable
-        if (cfg.train.config): ml_exe += f' --config-path {cfg.train.config}'
+        if (cfg.train.config_path): ml_exe += f' --config-path {cfg.train.config_path}'
+        if (cfg.train.config_name): ml_exe += f' --config-name {cfg.train.config_name}'
         ml_exe = ml_exe + f' ppn={cfg.run_args.mlprocs_pn}' \
                         + f' online.driver=smartsim' \
                         + f' online.simprocs={cfg.run_args.simprocs}' \

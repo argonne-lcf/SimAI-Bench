@@ -2,13 +2,12 @@ from typing import Callable, Optional, Union
 
 import torch
 from torch.nn import Parameter
-from torch_scatter import scatter, scatter_add, scatter_max, scatter_mean
 from torch_geometric.data import Batch
-
 from torch_geometric.utils import softmax, remove_self_loops, coalesce
-
 from torch_geometric.utils.num_nodes import maybe_num_nodes
 from torch_geometric.nn.inits import uniform
+#from torch_scatter import scatter, scatter_add, scatter_max, scatter_mean
+from torch_geometric.utils import scatter
 
 
 from torch_geometric.nn.pool.consecutive import consecutive_cluster
@@ -17,12 +16,14 @@ from torch_geometric.nn.pool.consecutive import consecutive_cluster
 def topk(x, ratio, batch, min_score=None, tol=1e-7):
     if min_score is not None:
         # Make sure that we do not drop all nodes in a graph.
-        scores_max = scatter_max(x, batch)[0].index_select(0, batch) - tol
+        #scores_max = scatter_max(x, batch)[0].index_select(0, batch) - tol
+        scores_max = scatter(x, batch, reduce='max')[0].index_select(0, batch) - tol
         scores_min = scores_max.clamp(max=min_score)
 
         perm = (x > scores_min).nonzero(as_tuple=False).view(-1)
     else:
-        num_nodes = scatter_add(batch.new_ones(x.size(0)), batch, dim=0)
+        #num_nodes = scatter_add(batch.new_ones(x.size(0)), batch, dim=0)
+        num_nodes = scatter(batch.new_ones(x.size(0)), batch, dim=0, reduce='add')
         batch_size, max_num_nodes = num_nodes.size(0), num_nodes.max().item()
 
         cum_num_nodes = torch.cat(
@@ -214,7 +215,8 @@ def avg_pool_mod(cluster, x, edge_index, edge_attr, batch, pos):
     batch_pool = None if batch is None else batch[perm]
 
     # Pool node positions 
-    pos_pool = None if pos is None else scatter_mean(pos, cluster, dim=0)
+    #pos_pool = None if pos is None else scatter_mean(pos, cluster, dim=0)
+    pos_pool = None if pos is None else scatter(pos, cluster, dim=0, reduce='mean')
 
     return x_pool, edge_index_pool, edge_attr_pool, batch_pool, pos_pool, cluster, perm
 
