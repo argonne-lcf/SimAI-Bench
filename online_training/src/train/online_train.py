@@ -237,13 +237,18 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             if (comm.rankl==0):
                 if (cfg.distributed=="ddp"):
                     jit_model = model.module.script_model()
+                    #model_arr = np.array([model_bytes])
+                    #client.client.put_tensor(cfg.model,model_arr)
+                if (cfg.model=="gnn"):
+                    torch.jit.save(jit_model, f"/tmp/{cfg.model}.pt")
+                else:
                     buffer = io.BytesIO()
                     torch.jit.save(jit_model, buffer)
                     model_bytes = buffer.getvalue()
-                if client.client.model_exists(cfg.model):
-                    client.client.delete_model(cfg.model)
-                client.client.set_model(cfg.model, model_bytes,
-                                        "TORCH", cfg.online.smartsim.inference_device)
+                    if client.client.model_exists(cfg.model):
+                        client.client.delete_model(cfg.model)
+                    client.client.set_model(cfg.model, model_bytes,
+                                            "TORCH", cfg.online.smartsim.inference_device)
             if (comm.rank==0):
                 print("\nShared model checkpoint", flush=True)
 

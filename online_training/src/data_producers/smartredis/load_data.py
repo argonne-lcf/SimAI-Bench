@@ -3,6 +3,7 @@ from math import pi as PI
 from time import perf_counter, sleep
 from typing import Tuple, Optional
 import numpy as np
+import os.path
 import torch
 from torch_geometric.nn import knn_graph
 
@@ -140,7 +141,10 @@ class SmartRedisClient:
     # Check to see if model exists in DB
     def model_exists(self, comm, model_name: str) -> bool:
         tic = perf_counter()
-        local_exists = 1 if self.client.model_exists(model_name) else 0
+        if (model_name=="gnn"):
+            local_exists = 1 if os.path.exists(f"/tmp/{model_name}.pt") else 0
+        else:
+            local_exists = 1 if self.client.model_exists(model_name) else 0
         toc = perf_counter()
         self.times["tot_meta"] += toc - tic
         global_exists = comm.allreduce(local_exists)
@@ -154,15 +158,22 @@ class SmartRedisClient:
     # Perform inference with model on DB
     def infer_model(self, comm, model_name: str, inputs: np.ndarray,
                     outputs: np.ndarray) -> float:
-        input_key = f"{model_name}_inputs_{self.rank}"
-        output_key = f"{model_name}_outputs_{self.rank}"
         if inputs.ndim<2:
             inputs = np.expand_dims(inputs, axis=1)
         tic = perf_counter()
-        self.client.put_tensor(input_key, inputs.astype(np.float32))
-        self.client.run_model(model_name, inputs=[input_key], 
-                              outputs=[output_key])
-        pred = self.client.get_tensor(output_key)
+        if (model_name=="gnn"):
+            #model_bytes = self.client.get_tensor(model_name)[0]
+            #buffer = io.BytesIO(model_bytes)
+            #model_jit = torch.jit.load(buffer)
+            model_jit = torch.jit.load(f"/tmp/{model_name}.pt")
+            pred = model_jit(inputs)
+        else:
+            input_key = f"{model_name}_inputs_{self.rank}"
+            output_key = f"{model_name}_outputs_{self.rank}"
+            self.client.put_tensor(input_key, inputs.astype(np.float32))
+            self.client.run_model(model_name, inputs=[input_key], 
+                                  outputs=[output_key])
+            pred = self.client.get_tensor(output_key)
         toc = perf_counter()
         self.times["tot_infer"] += toc - tic
         self.times["infer"].append(toc - tic)
