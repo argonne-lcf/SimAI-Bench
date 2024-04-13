@@ -1,0 +1,48 @@
+# General run config
+ppn: 1 # integer - number of MPI processes per node for ML training
+ppd: 1 # integer - number of MPI processes per device for ML training
+logging: "debug" # no, debug, verbose-perf - type of logging desired
+device: "cpu" # cpu, cuda, xpu - device to train on
+distributed: "ddp" # horovod, ddp - distributed training library
+model: "mlp" # mlp, gnn - model descriptor
+data_path: "" # string, synthetic - path to training data to load
+num_samples_per_rank: 111 # integer - number of data samples per rank. 111 - 20x mini_batch size
+reproducibility: True # True, False - make training deterministic
+
+# Training hyperparameters config
+epochs: 100 # integer - max number of epochs for training
+mini_batch: 32 # integer - mini batch size for SGD update
+learning_rate: 0.001 # float - serial leranring rate
+tolerance: 1.0e-4 # float - convergence tolerance of validation loss
+validation_split: 0.25 # float - percentage of data kept for validation
+optimizer: "Adam" # Adam - optimizer used for training
+scheduler: "None" # None,Plateau - optimizer scheduler to be used
+precision: "fp32" # fp32,fp64,bf16,tf32 - precision for training
+mixed_precision: False # True, False - enable automatic mixed precision
+name: "./NNmodel" # string - name used to save ML model
+save_db: False # True, False - save database contents at the end of trainint to .rdb file
+
+# Online train config
+online:
+    driver: "smartsim" # smartsim - descriptor for workflow driver
+    global_shuffling: False # True, False - enforce shuffling of DB tensors at every epoch
+    batch: 0 # integer - number of tensors to grab from database at once for global shuffling, 0: grab all tensors at once, recommended
+    simprocs: 1 # int - number of MPI processes simulation is running with
+    checkpoints: 10 # int - frequency in epochs to share model checkpoint
+    smartsim:
+        db_launch: "" # colocated,clustered - deployment method of SmartSim database
+        db_nodes: 1 # int - number of nodes dabase is sharded across. Always 1 for colocated DB.
+        inference_device: "CPU" # CPU,GPU,GPU:# - device string for inference with RedisAI from data producer
+ 
+# Model specific config
+mlp:
+    inputs: 1 # integer - number of input features to the MLP model
+    outputs: 1 # integer - number of output targets to the MLP model
+    neurons: 40 # integer - number of neurons in layers for MLP model
+    layers: 5 # integer - number of hidden layers for MLP model
+gnn:
+    gnn_config: "./conf/gnn_config.yaml" # string - path to config file for GNN model
+    input_channels: 1 # int - input channels for model
+    output_channels: 1 # int - output channels for model
+    
+
