@@ -126,9 +126,9 @@ def main(cfg: DictConfig):
 
     # Train model
     if cfg.online.driver:
-        model, testData = onlineTrainLoop(cfg, comm, client, t_data, model)
+        model, sample_data = onlineTrainLoop(cfg, comm, client, t_data, model)
     else:
-        model, testData = offlineTrainLoop(cfg, comm, t_data, model, data)
+        model, sample_data = offlineTrainLoop(cfg, comm, t_data, model, data)
 
     # Save model to file before exiting
     if (cfg.distributed=='ddp'):
@@ -136,7 +136,7 @@ def main(cfg: DictConfig):
         dist.destroy_process_group()
     if (comm.rank == 0):
         model.eval()
-        model.save_checkpoint(cfg.name, testData)
+        model.save_checkpoint(cfg.name, sample_data)
         print("")
         print("Saved model to disk\n")
         sys.stdout.flush()

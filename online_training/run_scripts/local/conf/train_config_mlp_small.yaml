@@ -14,7 +14,7 @@ epochs: 100 # integer - max number of epochs for training
 mini_batch: 32 # integer - mini batch size for SGD update
 learning_rate: 0.001 # float - serial leranring rate
 tolerance: 1.0e-4 # float - convergence tolerance of validation loss
-validation_split: 0.25 # float - percentage of data kept for validation
+validation_split: 0.0 # float - percentage of data kept for validation
 optimizer: "Adam" # Adam - optimizer used for training
 scheduler: "None" # None,Plateau - optimizer scheduler to be used
 precision: "fp32" # fp32,fp64,bf16,tf32 - precision for training

@@ -1,13 +1,16 @@
 from argparse import ArgumentParser
-from math import pi as PI
-from time import perf_counter, sleep
+import math
+from time import perf_counter, sleep, time
 from typing import Tuple, Optional
 import numpy as np
 import os.path
+import gmpy
 import torch
 from torch_geometric.nn import knn_graph
 
 from smartredis import Client
+
+PI = math.pi
 
 # SmartRedis Client Class
 class SmartRedisClient:
@@ -122,7 +125,7 @@ class SmartRedisClient:
     def send_snapshot(self, array: np.ndarray, step: int):
         key = 'y.'+str(self.rank) #+'.'+str(step)
         if (self.rank==0):
-            print(f'Sending training data with key {key} and shape {array.shape}', flush=True)
+            print(f'\tSending training data with key {key} and shape {array.shape}', flush=True)
         tic = perf_counter()
         self.client.put_tensor(key, array)
         toc = perf_counter()
@@ -149,8 +152,8 @@ class SmartRedisClient:
         self.times["tot_meta"] += toc - tic
         global_exists = comm.allreduce(local_exists)
         if global_exists==self.size:
-            if self.rank == 0:
-                print("\nFound model checkpoint in DB\n", flush=True)
+            #if self.rank == 0:
+            #    print("\nFound model checkpoint in DB\n", flush=True)
             return True
         else:
             return False
@@ -222,10 +225,13 @@ class SmartRedisClient:
             print(f"SmartRedis {key} [s] " + stats_string)
 
 # Generate training data for each model
-def generate_training_data(args, rank: int, step: Optional[int] = 0) -> Tuple[np.ndarray, dict]:
+def generate_training_data(args, comm_info: Tuple[int,int], 
+                           step: Optional[int] = 0) -> Tuple[np.ndarray, dict]:
     """Generate training data for each model
     """
-    random_seed = 12345 + 1000*rank + 100*step
+    rank = comm_info[0]
+    size = comm_info[1]
+    random_seed = 12345 + 1000*rank
     rng = np.random.default_rng(seed=random_seed)
     if (args.problem_size=="debug"):
         n_samples = 512
@@ -235,6 +241,17 @@ def generate_training_data(args, rank: int, step: Optional[int] = 0) -> Tuple[np
         y = np.sin(x)+0.1*np.sin(4*PI*x)
         y = (y - (-1.0875)) / (1.0986 - (-1.0875)) # min-max scaling
         data = np.vstack((x,y)).T
+    elif (args.problem_size=="small"):
+        assert gmpy.is_square(size), "Number of MPI ranks must be square"
+        N = 32
+        n_samples = N**2
+        ndIn = 1
+        ndTot = 2
+        x, y = partition_domain((-2*PI, 2*PI), (-2*PI, 2*PI), N, size, rank)
+        x, y = np.meshgrid(x, y)
+        u = np.sin(0.1*step)*np.sin(x)*np.sin(y)
+        udt = np.sin(0.1*(step+1))*np.sin(x)*np.sin(y)
+        data = np.vstack((u.flatten(),udt.flatten())).T
 
     return_dict = {
         "n_samples": n_samples,
@@ -242,6 +259,27 @@ def generate_training_data(args, rank: int, step: Optional[int] = 0) -> Tuple[np
         "n_dim_tot": ndTot
     }
     return data, return_dict
+
+# Partition the global domain
+def partition_domain(x_lim: Tuple[float,float], y_lim: Tuple[float,float],
+                     N: int, comm_size: int, 
+                     rank: int) -> Tuple[np.ndarray,np.ndarray]:
+    if (comm_size==1):
+        x = np.linspace(x_lim[0], x_lim[1], N)
+        y = np.linspace(y_lim[0], y_lim[1], N)
+    else:
+        n_parts_per_dim = math.isqrt(comm_size)
+        xrange = (x_lim[1]-x_lim[0])/n_parts_per_dim
+        x_id = rank % n_parts_per_dim
+        x_min = xrange*x_id
+        x_max = xrange*(x_id+1)
+        x = np.linspace(x_min, x_max, N)
+        yrange = (y_lim[1]-y_lim[0])/n_parts_per_dim
+        y_id = rank // n_parts_per_dim
+        y_min = yrange*y_id
+        y_max = yrange*(y_id+1)
+        y = np.linspace(y_min, y_max, N)
+    return x, y
 
 # Print FOM
 def print_fom(time2sol: float, train_data_sz: float, ssim_stats: dict):
@@ -274,6 +312,8 @@ def main():
     name = MPI.Get_processor_name()
     comm.Barrier()
 
+    t_start = time()
+
     # Parse arguments
     parser = ArgumentParser(description='SmartRedis Data Producer')
     parser.add_argument('--model', default="mlp", type=str, help='ML model identifier (mlp, quadconv, gnn)')
@@ -283,7 +323,7 @@ def main():
     parser.add_argument('--db_nodes', default=1, type=int, help='Number of database nodes')
     parser.add_argument('--ppn', default=4, type=int, help='Number of processes per node')
     parser.add_argument('--logging', default='no', help='Level of performance logging (no, verbose)')
-    parser.add_argument('--reproducibility', type=str, default='False', help='Send a single array for reproducible results')
+    parser.add_argument('--train_interval', type=int, default=5, help='Time step interval used to sync with ML training')
     args = parser.parse_args()
 
     rankl = rank % args.ppn
@@ -298,7 +338,7 @@ def main():
     client.init_client(comm)
 
     # Generate synthetic data for the specific model
-    train_array, stats = generate_training_data(args, rank)
+    train_array, stats = generate_training_data(args, (rank, size))
 
     # Send training metadata
     client.setup(comm, stats["n_samples"], 
@@ -311,38 +351,40 @@ def main():
     success = 0
     tic_loop = perf_counter()
     for step in range(numts):
-        # Sleep for a few seconds to emulate the time required by PDE integration
-        sleep(1)
-        if args.reproducibility=="False":
-            train_array, _ = generate_training_data(args, rank, step)
+        # Sleep for a while to emulate the time required by PDE integration
+        if rank==0:
+            print(f"{step} \t {time()-t_start:>.2E}", flush=True)
+        sleep(0.5)
+        train_array, _ = generate_training_data(args, (rank,size), step)
 
-        # Check if model exists to perform inference
-        exists = client.model_exists(comm, args.model)
-        if exists:
-            if (args.problem_size=="debug"):
-                inputs = train_array[:,0]
-                outputs = train_array[:,1]
-            error = client.infer_model(comm, args.model, inputs, outputs)
+        if (step%args.train_interval==0):
+            # Check if model exists to perform inference
+            exists = client.model_exists(comm, args.model)
+            if exists:
+                if (args.problem_size=="debug" or args.problem_size=="small"):
+                    inputs = train_array[:,0]
+                    outputs = train_array[:,1]
+                error = client.infer_model(comm, args.model, inputs, outputs)
+                if (rank==0):
+                    print(f"\tPerformed inference with error={error:>8e}", flush=True)
+                if error <= args.tolerance:
+                    success += 1
+                else:
+                    success = 0
+
+            # Send training data
+            client.send_snapshot(train_array, step)
+            comm.Barrier()
             if (rank==0):
-                print(f"Performed inference with error={error:>8e}", flush=True)
-            if error <= args.tolerance:
-                success += 1
-            else:
-                success = 0
+                print(f'\tAll ranks finished sending training data', flush=True)
+            client.send_step(step)
 
-        # Send training data
-        client.send_snapshot(train_array, step)
-        comm.Barrier()
-        if (rank==0):
-            print(f'All ranks finished sending training data', flush=True)
-        client.send_step(step)
-
-        # Exit if model has converged to tolerence for 5 consecutive checks
-        if success>=5: 
-            if rank==0:
-                print("\nModel has converged to tolerence for 5 consecutive checks", flush=True)
-            client.stop_train(comm)
-            break
+            # Exit if model has converged to tolerence for 5 consecutive checks
+            if success>=5: 
+                if rank==0:
+                    print("\nModel has converged to tolerence for 5 consecutive checks", flush=True)
+                client.stop_train(comm)
+                break
 
     toc_loop = perf_counter()
     time_to_solution = toc_loop - tic_loop

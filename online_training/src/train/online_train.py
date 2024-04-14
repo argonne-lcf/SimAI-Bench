@@ -217,7 +217,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                         t_data.i_getBatch_v = t_data.i_getBatch_v + 1
                         fact = float(1.0/t_data.i_getBatch_v)
                         t_data.t_AveGetBatch_v = fact*rtime + (1.0-fact)*t_data.t_AveGetBatch_v
-                running_acc, running_loss, testData = validate(comm, model, val_loader, 
+                running_acc, running_loss, _ = validate(comm, model, val_loader, 
                                                       mixed_dtype, iepoch, cfg)
                 running_loss += running_loss
                 running_acc += running_acc
@@ -259,7 +259,8 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
 
         iepoch = iepoch + 1 
  
-    return model, testData
+    sample_data = next(iter(train_loader)) 
+    return model, sample_data
 
 
 
