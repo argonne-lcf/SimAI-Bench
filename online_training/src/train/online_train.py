@@ -5,8 +5,8 @@
 #####
 import sys
 import io
-from datetime import datetime
-from time import sleep,perf_counter
+from typing import List
+from time import perf_counter
 import numpy as np
 
 import torch
@@ -27,10 +27,10 @@ except:
 
 from utils import metric_average
 from offline_train import train, validate, test
-from datasets import MiniBatchDataset, KeyDataset
+from datasets import RankDataset, RankStepDataset
 
 # Generate training and validation data loaders for DB interaction
-def setup_online_dataloaders(cfg, comm, dataset, batch_size, split):
+def setup_online_dataloaders(cfg, comm, dataset, batch_size, split: List[float]):
     # Split tensors for trianing and validation
     # random generator is needed to ensure same split across ranks
     generator = torch.Generator().manual_seed(12345)
@@ -100,14 +100,14 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                                              num_groups=1)
 
     # Create training and validation Datasets
-    tot_db_tensors = client.num_db_tensors
-    sim_rank_list = np.arange(0,tot_db_tensors,dtype=int)
-    num_val_tensors = int(tot_db_tensors*cfg.validation_split)
-    num_train_tensors = tot_db_tensors - num_val_tensors
-    tensor_split = [num_train_tensors, num_val_tensors]
+    num_db_tensors = client.num_db_tensors
+    num_val_tensors = int(num_db_tensors*cfg.validation_split)
+    num_train_tensors = num_db_tensors - num_val_tensors
+    tensor_split = [1-cfg.validation_split, cfg.validation_split]
     if (num_val_tensors==0 and cfg.validation_split>0):
         if (comm.rank==0): print("Insufficient number of tensors for validation -- skipping it")
-    key_dataset = KeyDataset(sim_rank_list,client.head_rank,istep,client.dataOverWr)
+    if client.dataOverWr:
+        key_dataset = RankDataset(num_db_tensors,client.head_rank)
 
     # While loop that checks when training data is available on database
     if (comm.rank == 0):
@@ -126,6 +126,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         sys.stdout.flush()
 
     # Start training loop
+    step_list = []
     while True:
         tic_l = perf_counter()
         # Check to see if simulation says time to quit, if so break loop
@@ -150,10 +151,14 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         # If step number mismatch, create new data loaders and update
         if (istep != tmp[0]): 
             istep = tmp[0]
+            step_list.append(istep)
             update = True
             if (comm.rank == 0):
                 print("\nNew training data was sent to the DB ...")
                 print(f"Working with time step {istep} \n", flush=True)
+            if not client.dataOverWr:
+                key_dataset = RankStepDataset(num_db_tensors, step_list, client.head_rank)
+                client.tensor_batch =  int(num_db_tensors*len(step_list)/(cfg.ppn*cfg.ppd))
             train_tensor_loader, \
                 train_sampler, \
                 val_tensor_loader = setup_online_dataloaders(cfg, comm, key_dataset, client.tensor_batch, 

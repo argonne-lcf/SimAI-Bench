@@ -1,9 +1,10 @@
+import sys
+import os, os.path
 from argparse import ArgumentParser
 import math
 from time import perf_counter, sleep, time
 from typing import Tuple, Optional
 import numpy as np
-import os.path
 import gmpy
 import torch
 from torch_geometric.nn import knn_graph
@@ -21,6 +22,9 @@ class SmartRedisClient:
         self.rank = rank
         self.size = size
         self.ppn = args.ppn
+        self.ow = True if args.problem_size=="debug" else False
+        self.max_mem = args.db_max_mem_size*1024*1024*1024
+        self.db_address = None
         self.times = {
             "init": 0.,
             "tot_meta": 0.,
@@ -40,6 +44,7 @@ class SmartRedisClient:
 
     # Initialize client
     def init_client(self, comm):
+        self.db_address = os.environ["SSDB"]
         if (self.db_nodes==1):
             tic = perf_counter()
             self.client = Client(cluster=False)
@@ -54,7 +59,7 @@ class SmartRedisClient:
             print('All SmartRedis clients initialized \n', flush=True)
     
     # Set up training case and write metadata
-    def setup(self, comm, n_samples: int, ndTot: int, ndIn: int):
+    def setup(self, comm, data_info: dict):
         if (self.rank%self.ppn == 0):
             # Run-check
             arr = np.array([1, 1], dtype=np.int64)
@@ -65,9 +70,9 @@ class SmartRedisClient:
 
             # Training data setup
             dataSizeInfo = np.empty((6,), dtype=np.int64)
-            dataSizeInfo[0] = n_samples
-            dataSizeInfo[1] = ndTot
-            dataSizeInfo[2] = ndIn
+            dataSizeInfo[0] = data_info["n_samples"]
+            dataSizeInfo[1] = data_info["n_dim_tot"]
+            dataSizeInfo[2] = data_info["n_dim_in"]
             dataSizeInfo[3] = comm.Get_size()
             dataSizeInfo[4] = self.ppn
             dataSizeInfo[5] = self.head_rank
@@ -77,6 +82,10 @@ class SmartRedisClient:
             self.times["tot_meta"] += toc - tic
 
             # Write overwrite tensor
+            if self.ow:
+                arr = np.array([1, 1], dtype=np.int64)
+            else:
+                arr = np.array([0, 0], dtype=np.int64)
             tic = perf_counter()
             self.client.put_tensor('tensor-ow', arr)
             toc = perf_counter()
@@ -123,7 +132,10 @@ class SmartRedisClient:
         
     # Send training snapshot
     def send_snapshot(self, array: np.ndarray, step: int):
-        key = 'y.'+str(self.rank) #+'.'+str(step)
+        if self.ow:
+            key = 'x.'+str(self.rank)
+        else:
+            key = 'x.'+str(self.rank)+'.'+str(step)
         if (self.rank==0):
             print(f'\tSending training data with key {key} and shape {array.shape}', flush=True)
         tic = perf_counter()
@@ -131,6 +143,19 @@ class SmartRedisClient:
         toc = perf_counter()
         self.times["tot_train"] += toc - tic
         self.times["train"].append(toc - tic)
+
+    # Check DB memory
+    def check_db_mem(self, array: np.ndarray) -> bool:
+        tic = perf_counter()
+        db_info=self.client.get_db_node_info([self.db_address])[0]
+        toc = perf_counter()
+        self.times["tot_meta"] += toc - tic
+        used_mem = float(db_info['Memory']['used_memory'])
+        free_mem = self.max_mem - used_mem
+        if (sys.getsizeof(array) < free_mem):
+            return True
+        else:
+            return False
 
     # Send time step
     def send_step(self, step: int):
@@ -319,11 +344,12 @@ def main():
     parser.add_argument('--model', default="mlp", type=str, help='ML model identifier (mlp, quadconv, gnn)')
     parser.add_argument('--problem_size', default="debug", type=str, help='Size of problem to emulate (debug)')
     parser.add_argument('--tolerance', default=0.01, type=float, help='ML model convergence tolerance')
-    parser.add_argument('--db_launch', default="colocated", type=str, help='Database deployment (colocated, clustered)')
-    parser.add_argument('--db_nodes', default=1, type=int, help='Number of database nodes')
     parser.add_argument('--ppn', default=4, type=int, help='Number of processes per node')
     parser.add_argument('--logging', default='no', help='Level of performance logging (no, verbose)')
     parser.add_argument('--train_interval', type=int, default=5, help='Time step interval used to sync with ML training')
+    parser.add_argument('--db_launch', default="colocated", type=str, help='Database deployment (colocated, clustered)')
+    parser.add_argument('--db_nodes', default=1, type=int, help='Number of database nodes')
+    parser.add_argument('--db_max_mem_size', default=1, type=float, help='Maximum size of DB in GB')
     args = parser.parse_args()
 
     rankl = rank % args.ppn
@@ -341,8 +367,7 @@ def main():
     train_array, stats = generate_training_data(args, (rank, size))
 
     # Send training metadata
-    client.setup(comm, stats["n_samples"], 
-                 stats["n_dim_tot"], stats["n_dim_in"])
+    client.setup(comm, stats)
     if (args.model=="gnn" and args.problem_size=="debug"):
         client.setup_graph(args.problem_size, rank, train_array[:,0])
 
@@ -373,11 +398,17 @@ def main():
                     success = 0
 
             # Send training data
-            client.send_snapshot(train_array, step)
-            comm.Barrier()
-            if (rank==0):
-                print(f'\tAll ranks finished sending training data', flush=True)
-            client.send_step(step)
+            local_free_mem = 1 if client.check_db_mem(train_array) else 0
+            global_free_mem = comm.allreduce(local_free_mem)
+            if global_free_mem==size:
+                client.send_snapshot(train_array, step)
+                comm.Barrier()
+                if (rank==0):
+                    print(f'\tAll ranks finished sending training data', flush=True)
+                client.send_step(step)
+            else:
+                if (rank==0):
+                    print(f'\tOut of memory in DB, did not send training data', flush=True)
 
             # Exit if model has converged to tolerence for 5 consecutive checks
             if success>=5: 

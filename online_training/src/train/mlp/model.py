@@ -18,7 +18,7 @@ try:
 except:
     pass
 
-from datasets import OfflineDataset, MiniBatchDataset
+from datasets import MiniBatchDataset, MiniBatchDataset
 
 
 class MLP(nn.Module): 
@@ -180,7 +180,7 @@ class MLP(nn.Module):
         nTrain = samples-nVal
         if (nVal==0 and cfg.validation_split>0):
             if (comm.rank==0): print("Insufficient number of samples for validation -- skipping it")
-        dataset = OfflineDataset(data)
+        dataset = MiniBatchDataset(data)
         trainDataset, valDataset = random_split(dataset, [nTrain, nVal])
 
         # DataLoader

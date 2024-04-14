@@ -7,7 +7,7 @@ distributed: "ddp" # horovod, ddp - distributed training library
 model: "gnn" # mlp, gnn - model descriptor
 data_path: "" # string, synthetic - path to training data to load
 num_samples_per_rank: 111 # integer - number of data samples per rank. 111 - 20x mini_batch size
-reproducibility: False # True, False - make training deterministic
+reproducibility: True # True, False - make training deterministic
 
 # Training hyperparameters config
 epochs: 100 # integer - max number of epochs for training

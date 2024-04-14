@@ -138,7 +138,7 @@ class SmartRedisClient:
             if (self.dataOverWr>0.5): 
                 print("\nTraining data is overwritten in DB \n")
             else:
-                print("Training data is accumulated in DB \n")
+                print("\nTraining data is accumulated in DB \n")
             sys.stdout.flush()
             
     
