@@ -382,6 +382,8 @@ def main():
         sleep(0.5)
         train_array, _ = generate_training_data(args, (rank,size), step)
 
+        if step>0 and step%60==0:
+            args.train_interval = int(args.train_interval*1.2)
         if (step%args.train_interval==0):
             # Check if model exists to perform inference
             exists = client.model_exists(comm, args.model)
