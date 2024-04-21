@@ -42,6 +42,10 @@ class SmartRedisClient:
             self.ppn = size
             self.head_rank = 0
 
+        # For GNN inference
+        self.coords = None
+        self.edge_index = None
+
     # Initialize client
     def init_client(self, comm):
         self.db_address = os.environ["SSDB"]
@@ -97,11 +101,14 @@ class SmartRedisClient:
 
     # Set up training case and write metadata
     def setup_graph(self, problem: str, rank: int, coords: Optional[np.ndarray] = None):
+        if coords.ndim<2:
+            coords = np.expand_dims(coords, axis=1)
+        self.coords = coords
         if (problem=="debug"):
-            edge_index = knn_graph(torch.from_numpy(coords), k=2, loop=False).numpy()
+            self.edge_index = knn_graph(torch.from_numpy(coords), k=2, loop=False).numpy()
         tic = perf_counter()
-        self.client.put_tensor(f'pos_node_{rank}', coords)
-        self.client.put_tensor(f'edge_index_{rank}', edge_index)
+        self.client.put_tensor(f'pos_node_{rank}', self.coords)
+        self.client.put_tensor(f'edge_index_{rank}', self.edge_index)
         toc = perf_counter()
         self.times["tot_meta"] += toc - tic
 
@@ -193,8 +200,17 @@ class SmartRedisClient:
             #model_bytes = self.client.get_tensor(model_name)[0]
             #buffer = io.BytesIO(model_bytes)
             #model_jit = torch.jit.load(buffer)
-            model_jit = torch.jit.load(f"/tmp/{model_name}.pt")
-            pred = model_jit(inputs)
+            while True:
+                try:
+                    model_jit = torch.jit.load(f"/tmp/{model_name}.pt")
+                    break
+                except:
+                    pass
+            x = torch.from_numpy(inputs).type(torch.float32)
+            edge_index = torch.from_numpy(self.edge_index).type(torch.int64)
+            pos = torch.from_numpy(self.coords).type(torch.float32)
+            with torch.no_grad():
+                pred = model_jit(x, edge_index, pos).numpy()
         else:
             input_key = f"{model_name}_inputs_{self.rank}"
             output_key = f"{model_name}_outputs_{self.rank}"

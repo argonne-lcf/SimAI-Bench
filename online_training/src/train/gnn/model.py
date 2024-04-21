@@ -23,7 +23,7 @@ except:
 
 try:
     import gnn
-    from gnn.gnn import mp_gnn
+    from gnn.gnn import MP_GNN
     import gnn.graph_connectivity as gcon
     import gnn.graph_plotting as gplot
 except:
@@ -68,13 +68,13 @@ class GNN(nn.Module):
         Build the GNN model
         :return: GNN model
         """
-        activation = getattr(F, self.cfg["activation"])
-        model = mp_gnn(self.cfg.input_channels, 
-                       self.cfg["hidden_channels"], 
-                       self.cfg.output_channels, 
-                       self.cfg["n_mlp_layers"], 
-                       activation,
-                       self.cfg.spatial_dim)
+        input_edge_channels = self.cfg.input_channels + self.cfg.spatial_dim + 1
+        model = MP_GNN(input_node_channels = self.cfg.input_channels,
+                       input_edge_channels = input_edge_channels,
+                       hidden_channels = self.cfg.hidden_channels,
+                       output_node_channels = self.cfg.output_channels,
+                       n_mlp_hidden_layers = self.cfg.n_mlp_hidden_layers,
+                       n_messagePassing_layers = self.cfg.n_message_passing_layers)
         return model
     
     def setup_local_graph(self, train_cfg, client, rank, t_data):
@@ -150,9 +150,7 @@ class GNN(nn.Module):
         :param batch: a torch.Tensor containing the batched inputs
         :return: loss for the batch
         """
-        output = self.model(batch.x, batch.edge_index, 
-                            batch.edge_attr, 
-                            batch.pos, batch.batch)
+        output = self.model(batch.x, batch.edge_index, batch.pos)
         loss = self.loss_fn(output, batch.y)
         return loss
     
@@ -163,9 +161,7 @@ class GNN(nn.Module):
         :param batch: a torch.Tensor containing the batched inputs and outputs
         :return: tuple with the accuracy and loss for the batch
         """
-        output = self.model(batch.x, batch.edge_index, 
-                            batch.edge_attr, 
-                            batch.pos, batch.batch)
+        output = self.model(batch.x, batch.edge_index, batch.pos)
         error = self.loss_fn(output, batch.y)
         loss = self.loss_fn(output, batch.y)
         return error, loss
@@ -178,9 +174,7 @@ class GNN(nn.Module):
         :param return_loss: whether to compute the loss on the testing data
         :return: tuple with the accuracy and loss for the batch
         """
-        output = self.model(batch.x, batch.edge_index, 
-                            batch.edge_attr, 
-                            batch.pos, batch.batch)
+        output = self.model(batch.x, batch.edge_index, batch.pos)
         error = self.loss_fn(output, batch.y)
 
         if return_loss:
