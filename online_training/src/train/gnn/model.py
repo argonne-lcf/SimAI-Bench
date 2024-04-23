@@ -291,7 +291,7 @@ class GNN(nn.Module):
         if (cfg.logging=='debug'):
             print(f'[{comm.rank}]: Grabbing tensors with key {keys}', flush=True)
         rtime = perf_counter()
-        concat_tensor = torch.cat([torch.from_numpy(client.client.get_tensor(key).astype('float32')) \
+        concat_tensor = torch.cat([torch.from_numpy(client.client.get_tensor(key)) \
                                     for key in keys], dim=0)
         rtime = perf_counter() - rtime
 
@@ -318,6 +318,10 @@ class GNN(nn.Module):
                             y = concat_tensor[:,self.cfg.input_channels:]
                         )
         for key in reduced_graph_dict.keys():
+            if key=="edge_index":
+                print("concatenating edge_index")
+                edge_index = torch.cat([reduced_graph_dict[key] \
+                                    for key in keys], dim=0)
             data_temp[key] = reduced_graph_dict[key]
         data_list.append(data_temp)
         dataset = data_list

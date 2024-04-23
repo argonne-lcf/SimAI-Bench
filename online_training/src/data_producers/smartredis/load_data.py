@@ -100,12 +100,11 @@ class SmartRedisClient:
             print('Metadata sent to DB \n', flush=True)
 
     # Set up training case and write metadata
-    def setup_graph(self, problem: str, rank: int, coords: Optional[np.ndarray] = None):
+    def setup_graph(self, coords: np.ndarray, rank: int):
         if coords.ndim<2:
             coords = np.expand_dims(coords, axis=1)
         self.coords = coords
-        if (problem=="debug"):
-            self.edge_index = knn_graph(torch.from_numpy(coords), k=2, loop=False).numpy()
+        self.edge_index = knn_graph(torch.from_numpy(coords), k=2, loop=False).numpy()
         tic = perf_counter()
         self.client.put_tensor(f'pos_node_{rank}', self.coords)
         self.client.put_tensor(f'edge_index_{rank}', self.edge_index)
@@ -267,7 +266,7 @@ class SmartRedisClient:
 
 # Generate training data for each model
 def generate_training_data(args, comm_info: Tuple[int,int], 
-                           step: Optional[int] = 0) -> Tuple[np.ndarray, dict]:
+                           step: Optional[int] = 0) -> Tuple[np.ndarray, np.ndarray, dict]:
     """Generate training data for each model
     """
     rank = comm_info[0]
@@ -278,18 +277,19 @@ def generate_training_data(args, comm_info: Tuple[int,int],
         n_samples = 512
         ndIn = 1
         ndTot = 2
-        x = rng.uniform(low=0.0, high=2*PI, size=n_samples)
-        y = np.sin(x)+0.1*np.sin(4*PI*x)
+        coords = rng.uniform(low=0.0, high=2*PI, size=n_samples)
+        y = np.sin(coords)+0.1*np.sin(4*PI*coords)
         y = (y - (-1.0875)) / (1.0986 - (-1.0875)) # min-max scaling
-        data = np.vstack((x,y)).T
+        data = np.vstack((coords,y)).T
     elif (args.problem_size=="small"):
-        assert gmpy.is_square(size), "Number of MPI ranks must be square"
+        assert gmpy.is_square(size) or size==1, "Number of MPI ranks must be square or 1"
         N = 32
         n_samples = N**2
         ndIn = 1
         ndTot = 2
         x, y = partition_domain((-2*PI, 2*PI), (-2*PI, 2*PI), N, size, rank)
         x, y = np.meshgrid(x, y)
+        coords = np.vstack((x.flatten(),y.flatten())).T
         u = np.sin(0.1*step)*np.sin(x)*np.sin(y)
         udt = np.sin(0.1*(step+1))*np.sin(x)*np.sin(y)
         data = np.vstack((u.flatten(),udt.flatten())).T
@@ -299,7 +299,7 @@ def generate_training_data(args, comm_info: Tuple[int,int],
         "n_dim_in": ndIn,
         "n_dim_tot": ndTot
     }
-    return data, return_dict
+    return data, coords, return_dict
 
 # Partition the global domain
 def partition_domain(x_lim: Tuple[float,float], y_lim: Tuple[float,float],
@@ -380,12 +380,12 @@ def main():
     client.init_client(comm)
 
     # Generate synthetic data for the specific model
-    train_array, stats = generate_training_data(args, (rank, size))
+    train_array, coords, stats = generate_training_data(args, (rank, size))
 
     # Send training metadata
     client.setup(comm, stats)
-    if (args.model=="gnn" and args.problem_size=="debug"):
-        client.setup_graph(args.problem_size, rank, train_array[:,0])
+    if (args.model=="gnn"):
+        client.setup_graph(coords, rank)
 
     # Emulate integration of PDEs with a do loop
     numts = 1000
@@ -396,7 +396,7 @@ def main():
         if rank==0:
             print(f"{step} \t {time()-t_start:>.2E}", flush=True)
         sleep(0.5)
-        train_array, _ = generate_training_data(args, (rank,size), step)
+        train_array, _, _ = generate_training_data(args, (rank,size), step)
 
         if step>0 and step%60==0:
             args.train_interval = int(args.train_interval*1.2)

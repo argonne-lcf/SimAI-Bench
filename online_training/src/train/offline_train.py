@@ -34,6 +34,8 @@ def train(comm, model, train_loader, optimizer, scaler, mixed_dtype,
             # Offload batch data
             if (cfg.device != 'cpu'):
                data = data.to(cfg.device)
+            if comm.rank==0 and cfg.model=='gnn':
+                print(f"{batch_idx}: {data.x.shape}, {data.edge_index.shape}, {data.pos.shape}")
 
             # Perform forward and backward passes
             rtime = perf_counter()
