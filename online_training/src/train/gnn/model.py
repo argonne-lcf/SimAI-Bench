@@ -36,9 +36,12 @@ class GNN(nn.Module):
         """
         super().__init__()
         # Build model
-        #self.cfg = self.load_model_config(train_cfg.gnn.gnn_config)
         self.cfg = train_cfg.gnn
         self.model = self.build_model()
+
+        # Graph stats
+        self.local_graph_nodes = 0
+        self.local_graph_edges = 0
 
         # Initialize local graph data structures
         self.graph_reduced = None
@@ -139,6 +142,8 @@ class GNN(nn.Module):
         # Get the indices to go from reduced back to full graph  
         #self.idx_reduced2full = gcon.get_upsample_indices(self.graph_full, self.graph_reduced, self.idx_full2reduced)
 
+        self.local_graph_nodes = pos.shape[0]
+        self.local_graph_edges = ei.shape[1]
         self.graph_reduced = Data(x = None, 
                                   edge_index = torch.tensor(ei), 
                                   pos = torch.tensor(pos)) 
@@ -290,43 +295,39 @@ class GNN(nn.Module):
         """
         if (cfg.logging=='debug'):
             print(f'[{comm.rank}]: Grabbing tensors with key {keys}', flush=True)
-        rtime = perf_counter()
-        concat_tensor = torch.cat([torch.from_numpy(client.client.get_tensor(key)) \
-                                    for key in keys], dim=0)
-        rtime = perf_counter() - rtime
 
         if (cfg.precision == "fp32" or cfg.precision == "tf32"):
-            concat_tensor = concat_tensor.type(torch.float32)
+            dtype = torch.float32
         elif (cfg.precision == "fp64"):
-            concat_tensor = concat_tensor.type(torch.float64)
+            dtype = torch.float64
         elif (cfg.precision == "fp16"):
-            concat_tensor = concat_tensor.type(torch.float16)
+            dtype = torch.float16
         elif (cfg.precision == "bf16"):
-            concat_tensor = concat_tensor.type(torch.bfloat16)
+            dtype = torch.bfloat16
+
+        rtime = perf_counter()
+        tensor_list = [torch.from_numpy(client.client.get_tensor(key)).type(dtype) \
+                            for key in keys]
+        rtime = perf_counter() - rtime
 
         # Populate edge_attrs
-        cart = Cartesian(norm=False, max_value = None, cat = False)
-        dist = Distance(norm = False, max_value = None, cat = True)
-        self.graph_reduced = cart(self.graph_reduced) # adds cartesian/component-wise distance
-        self.graph_reduced = dist(self.graph_reduced) # adds euclidean distance
+        #cart = Cartesian(norm=False, max_value = None, cat = False)
+        #dist = Distance(norm = False, max_value = None, cat = True)
+        #self.graph_reduced = cart(self.graph_reduced) # adds cartesian/component-wise distance
+        #self.graph_reduced = dist(self.graph_reduced) # adds euclidean distance
 
-        # Create dataset
-        reduced_graph_dict = self.graph_reduced.to_dict()
-        data_list = []
-        data_temp = Data(   
-                            x = concat_tensor[:,:self.cfg.input_channels], 
-                            y = concat_tensor[:,self.cfg.input_channels:]
-                        )
-        for key in reduced_graph_dict.keys():
-            if key=="edge_index":
-                print("concatenating edge_index")
-                edge_index = torch.cat([reduced_graph_dict[key] \
-                                    for key in keys], dim=0)
-            data_temp[key] = reduced_graph_dict[key]
-        data_list.append(data_temp)
-        dataset = data_list
+        # Create dataset and data loader
+        dataset = []
+        for i in range(len(keys)):
+            data = Data(
+                x = tensor_list[i][:,:self.cfg.input_channels],
+                y = tensor_list[i][:,self.cfg.input_channels:],
+                edge_index = self.graph_reduced["edge_index"],
+                pos = self.graph_reduced["pos"]
+            )
+            dataset.append(data)
         data_loader = DataLoader(dataset, batch_size=cfg.mini_batch, 
-                                shuffle=False)
+                                 shuffle=False)
         return data_loader, rtime
     
     def script_model(self):

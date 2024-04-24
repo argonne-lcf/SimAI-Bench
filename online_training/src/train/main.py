@@ -142,10 +142,10 @@ def main(cfg: DictConfig):
         sys.stdout.flush()
 
     # Collect timing statistics
+    comm.comm.Barrier()
     if (t_data.i_train>0):
         if (comm.rank==0):
-            print("\nTiming data (excluding first epoch):")
-            sys.stdout.flush()
+            print("\nTiming data (excluding first epoch):", flush=True)
         t_data.printTimeData(cfg, comm)
 
     # Exit

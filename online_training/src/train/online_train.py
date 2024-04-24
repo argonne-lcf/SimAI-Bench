@@ -42,12 +42,16 @@ def setup_online_dataloaders(cfg, comm, dataset, batch_size, split: List[float])
     else:
         replicas = comm.size
         rank_arg = comm.rank
-    train_sampler = DistributedSampler(train_dataset, num_replicas=replicas, 
-                                       rank=rank_arg, drop_last=True, shuffle=True)
+    if cfg.model=="gnn":
+        train_sampler = None
+        val_sampler = None
+    else:
+        train_sampler = DistributedSampler(train_dataset, num_replicas=replicas, 
+                                           rank=rank_arg, drop_last=True, shuffle=True)
+        val_sampler = DistributedSampler(val_dataset, num_replicas=replicas, 
+                                         rank=rank_arg, drop_last=False)
     train_tensor_loader = DataLoader(train_dataset, batch_size=batch_size, 
                                      sampler=train_sampler)
-    val_sampler = DistributedSampler(val_dataset, num_replicas=replicas, 
-                                     rank=rank_arg, drop_last=False)
     val_tensor_loader = DataLoader(val_dataset, batch_size=batch_size, 
                                    sampler=val_sampler)
 
@@ -107,7 +111,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
     if (num_val_tensors==0 and cfg.validation_split>0):
         if (comm.rank==0): print("Insufficient number of tensors for validation -- skipping it")
     if client.dataOverWr:
-        key_dataset = RankDataset(num_db_tensors,client.head_rank)
+        key_dataset = RankDataset(num_db_tensors,client.head_rank,cfg.model,comm.rank)
 
     # While loop that checks when training data is available on database
     if (comm.rank == 0):
@@ -157,8 +161,11 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                 print("\nNew training data was sent to the DB ...")
                 print(f"Working with time step {istep} \n", flush=True)
             if not client.dataOverWr:
-                key_dataset = RankStepDataset(num_db_tensors, step_list, client.head_rank)
-                client.tensor_batch =  int(num_db_tensors*len(step_list)/(cfg.ppn*cfg.ppd))
+                client.tensor_batch =  max(1,int(num_db_tensors*len(step_list)/(cfg.ppn*cfg.ppd)))
+                if cfg.model=="gnn": 
+                    num_db_tensors = 1
+                    client.tensor_batch =  len(step_list)
+                key_dataset = RankStepDataset(num_db_tensors, step_list, client.head_rank, cfg.model, comm.rank)
             train_tensor_loader, \
                 train_sampler, \
                 val_tensor_loader = setup_online_dataloaders(cfg, comm, key_dataset, client.tensor_batch, 
@@ -172,7 +179,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             print("-------------------------------", flush=True)
         
         # Perform training step
-        train_sampler.set_epoch(iepoch)
+        if train_sampler is not None: train_sampler.set_epoch(iepoch)
         tic_t = perf_counter()
         running_loss = 0.
         for _, tensor_keys in enumerate(train_tensor_loader):
@@ -191,14 +198,14 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                     fact = float(1.0/t_data.i_getBatch)
                     t_data.t_AveGetBatch = fact*rtime + (1.0-fact)*t_data.t_AveGetBatch
             
-            running_loss, t_data = train(comm, model, 
+            loss, t_data = train(comm, model, 
                                  train_loader, optimizer, 
                                  scaler, mixed_dtype, iepoch, 
                                  t_data, cfg)
-            running_loss += running_loss
+            running_loss += loss
 
-        loss = running_loss / len(train_tensor_loader)
-        global_loss = metric_average(comm, loss)
+        local_loss = running_loss / len(train_tensor_loader)
+        global_loss = metric_average(comm, local_loss)
         toc_t = perf_counter()
         if (iepoch>0):
             t_data.t_train = t_data.t_train + (toc_t - tic_t)
@@ -222,10 +229,10 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                         t_data.i_getBatch_v = t_data.i_getBatch_v + 1
                         fact = float(1.0/t_data.i_getBatch_v)
                         t_data.t_AveGetBatch_v = fact*rtime + (1.0-fact)*t_data.t_AveGetBatch_v
-                running_acc, running_loss, _ = validate(comm, model, val_loader, 
+                acc, loss, _ = validate(comm, model, val_loader, 
                                                       mixed_dtype, iepoch, cfg)
-                running_loss += running_loss
-                running_acc += running_acc
+                running_loss += loss
+                running_acc += acc
             val_loss = running_loss / len(val_tensor_loader)
             global_val_loss = metric_average(comm, val_loss)
             val_acc = running_acc / len(val_tensor_loader)

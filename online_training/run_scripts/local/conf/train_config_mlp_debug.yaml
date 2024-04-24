@@ -14,7 +14,7 @@ epochs: 100 # integer - max number of epochs for training
 mini_batch: 32 # integer - mini batch size for SGD update
 learning_rate: 0.001 # float - serial leranring rate
 tolerance: 1.0e-4 # float - convergence tolerance of validation loss
-validation_split: 0.25 # float - percentage of data kept for validation
+validation_split: 0.0 # float - percentage of data kept for validation
 optimizer: "Adam" # Adam - optimizer used for training
 scheduler: "None" # None,Plateau - optimizer scheduler to be used
 precision: "fp32" # fp32,fp64,bf16,tf32 - precision for training
@@ -41,8 +41,11 @@ mlp:
     neurons: 40 # integer - number of neurons in layers for MLP model
     layers: 5 # integer - number of hidden layers for MLP model
 gnn:
-    gnn_config: "./conf/gnn_config.yaml" # string - path to config file for GNN model
+    spatial_dim: 1 # int - spatial dimension of graph
     input_channels: 1 # int - input channels for model
     output_channels: 1 # int - output channels for model
-    
+    hidden_channels: 16 # int - number of hidden node features
+    n_mlp_hidden_layers: 2 # int - number of hidden layers for encoder/decoder, edge update, node update layers MLPs
+    n_message_passing_layers: 6 # int - number of message passing layers
+    activation: "elu" # str - activation function
 

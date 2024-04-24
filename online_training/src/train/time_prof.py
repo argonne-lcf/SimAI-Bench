@@ -41,8 +41,12 @@ class timeStats:
         std = comm.comm.allreduce(tmp,op=comm.sum)
         std = std / comm.size
         std = math.sqrt(std)
-        min_loc = comm.comm.allreduce((var,comm.rank),op=comm.minloc)
-        max_loc = comm.comm.allreduce((var,comm.rank),op=comm.maxloc)
+        try:
+            min_loc = comm.comm.allreduce((var,comm.rank),op=comm.minloc)
+            max_loc = comm.comm.allreduce((var,comm.rank),op=comm.maxloc)
+        except:
+            min_loc = [0, 0]
+            max_loc = [0, 0]
         return avg, std, summ, [min_loc[0],min_loc[1]], [max_loc[0],max_loc[1]]
 
     # Compute min, max, mean and standard deviation across all processes for a counter

@@ -9,8 +9,8 @@ TRAIN_CONFIG_PATH=$PWD/conf
 TRAIN_CONFIG_NAME="train_config_gnn_small"
 
 # Set up run
-SIM_RANKS=1
-ML_RANKS=1
+SIM_RANKS=4
+ML_RANKS=4
 echo Number of simulation ranks: $SIM_RANKS
 echo Number of ML ranks: $ML_RANKS
 echo
