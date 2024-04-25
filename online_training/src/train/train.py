@@ -20,10 +20,7 @@ import models
 from time_prof import timeStats
 import utils
 
-## TEMPORARY FIZ FOR NOW
-## NEED TO ADD AN EXECUTOR ONE DIRECTORY ABOVE
-sys.path.append('../../src/backends/smartsim')
-import ssim_utils
+import ..backends
 
 ## Main function
 @hydra.main(version_base=None, config_path="./conf", config_name="train_config")
@@ -80,13 +77,14 @@ def main(cfg: DictConfig):
     # Instantiate performance data class
     t_data = timeStats()
 
-    # Initialize SmartRedis client and gather metadata
-    client = None
-    if cfg.online.driver=='smartsim':
-        client = ssim_utils.SmartRedisClient()
+    # Initialize client if performing online training
+    if cfg.online.backend=='smartredis':
+        client = backends.SmartRedisClient()
         client.init(cfg, comm, t_data)
         client.read_sizeInfo(cfg, comm, t_data)
         client.read_overwrite(comm, t_data)
+    else:
+        client = None
 
     # Instantiate the model and get the training data
     model, data = models.load_model(cfg, comm, client, rng, t_data)

@@ -23,12 +23,12 @@ save_db: False # True, False - save database contents at the end of trainint to 
 
 # Online train config
 online:
-    driver: "" # smartsim - descriptor for workflow driver
+    backend: "smartredis" # smartredis - backend for client
     global_shuffling: False # True, False - enforce shuffling of DB tensors at every epoch
     batch: 0 # integer - number of tensors to grab from database at once for global shuffling, 0: grab all tensors at once, recommended
     simprocs: 1 # int - number of MPI processes simulation is running with
     checkpoints: 10 # int - frequency in epochs to share model checkpoint
-    smartsim:
+    smartredis:
         db_launch: "" # colocated,clustered - deployment method of SmartSim database
         db_nodes: 1 # int - number of nodes dabase is sharded across. Always 1 for colocated DB.
         inference_device: "CPU" # CPU,GPU,GPU:# - device string for inference with RedisAI from data producer

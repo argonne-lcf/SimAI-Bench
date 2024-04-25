@@ -1,20 +1,13 @@
-import sys
 import os, os.path
-from argparse import ArgumentParser
-import math
-from time import perf_counter, sleep, time
-from typing import Tuple, Optional
+from time import perf_counter
 import numpy as np
-import gmpy
 import torch
 from torch_geometric.nn import knn_graph
 
 from smartredis import Client
 
-PI = math.pi
-
-# SmartRedis Client Class
-class SmartRedisClient:
+# SmartRedis Client Class for the Simulation (Data Producer)
+class SmartRedis_Sim_Client:
     def __init__(self, args, rank: int, size: int):
         self.client = None
         self.db_launch = args.db_launch
@@ -47,7 +40,7 @@ class SmartRedisClient:
         self.edge_index = None
 
     # Initialize client
-    def init_client(self, comm):
+    def init_client(self):
         self.db_address = os.environ["SSDB"]
         if (self.db_nodes==1):
             tic = perf_counter()
@@ -58,12 +51,9 @@ class SmartRedisClient:
             self.client = Client(cluster=True)
             toc = perf_counter()
         self.times["init"] = toc - tic
-        comm.Barrier()
-        if (self.rank==0):
-            print('All SmartRedis clients initialized \n', flush=True)
     
     # Set up training case and write metadata
-    def setup(self, comm, data_info: dict):
+    def setup_training_problem(self, data_info: dict):
         if (self.rank%self.ppn == 0):
             # Run-check
             arr = np.array([1, 1], dtype=np.int64)
@@ -77,7 +67,7 @@ class SmartRedisClient:
             dataSizeInfo[0] = data_info["n_samples"]
             dataSizeInfo[1] = data_info["n_dim_tot"]
             dataSizeInfo[2] = data_info["n_dim_in"]
-            dataSizeInfo[3] = comm.Get_size()
+            dataSizeInfo[3] = self.size
             dataSizeInfo[4] = self.ppn
             dataSizeInfo[5] = self.head_rank
             tic = perf_counter()
@@ -94,10 +84,6 @@ class SmartRedisClient:
             self.client.put_tensor('tensor-ow', arr)
             toc = perf_counter()
             self.times["tot_meta"] += toc - tic
-
-        comm.Barrier()
-        if (self.rank==0):
-            print('Metadata sent to DB \n', flush=True)
 
     # Set up training case and write metadata
     def setup_graph(self, coords: np.ndarray, rank: int):
@@ -264,198 +250,137 @@ class SmartRedisClient:
                            f"std = {val['std']:>8e} "
             print(f"SmartRedis {key} [s] " + stats_string)
 
-# Generate training data for each model
-def generate_training_data(args, comm_info: Tuple[int,int], 
-                           step: Optional[int] = 0) -> Tuple[np.ndarray, np.ndarray, dict]:
-    """Generate training data for each model
-    """
-    rank = comm_info[0]
-    size = comm_info[1]
-    random_seed = 12345 + 1000*rank
-    rng = np.random.default_rng(seed=random_seed)
-    if (args.problem_size=="debug"):
-        n_samples = 512
-        ndIn = 1
-        ndTot = 2
-        coords = rng.uniform(low=0.0, high=2*PI, size=n_samples)
-        y = np.sin(coords)+0.1*np.sin(4*PI*coords)
-        y = (y - (-1.0875)) / (1.0986 - (-1.0875)) # min-max scaling
-        data = np.vstack((coords,y)).T
-    elif (args.problem_size=="small"):
-        assert gmpy.is_square(size) or size==1, "Number of MPI ranks must be square or 1"
-        N = 32
-        n_samples = N**2
-        ndIn = 1
-        ndTot = 2
-        x, y = partition_domain((-2*PI, 2*PI), (-2*PI, 2*PI), N, size, rank)
-        x, y = np.meshgrid(x, y)
-        coords = np.vstack((x.flatten(),y.flatten())).T
-        u = np.sin(0.1*step)*np.sin(x)*np.sin(y)
-        udt = np.sin(0.1*(step+1))*np.sin(x)*np.sin(y)
-        data = np.vstack((u.flatten(),udt.flatten())).T
 
-    return_dict = {
-        "n_samples": n_samples,
-        "n_dim_in": ndIn,
-        "n_dim_tot": ndTot
-    }
-    return data, coords, return_dict
+# SmartRedis Client Class for Training
+class SmartRedis_Train_Client:
+    def __init__(self):
+        self.client = None
+        self.npts = None
+        self.ndTot = None
+        self.ndIn = None
+        self.ndOut = None
+        self.num_tot_tensors = None
+        self.num_db_tensors = None
+        self.head_rank = None
+        self.tensor_batch = None
+        self.dataOverWr = None
 
-# Partition the global domain
-def partition_domain(x_lim: Tuple[float,float], y_lim: Tuple[float,float],
-                     N: int, comm_size: int, 
-                     rank: int) -> Tuple[np.ndarray,np.ndarray]:
-    if (comm_size==1):
-        x = np.linspace(x_lim[0], x_lim[1], N)
-        y = np.linspace(y_lim[0], y_lim[1], N)
-    else:
-        n_parts_per_dim = math.isqrt(comm_size)
-        xrange = (x_lim[1]-x_lim[0])/n_parts_per_dim
-        x_id = rank % n_parts_per_dim
-        x_min = xrange*x_id
-        x_max = xrange*(x_id+1)
-        x = np.linspace(x_min, x_max, N)
-        yrange = (y_lim[1]-y_lim[0])/n_parts_per_dim
-        y_id = rank // n_parts_per_dim
-        y_min = yrange*y_id
-        y_max = yrange*(y_id+1)
-        y = np.linspace(y_min, y_max, N)
-    return x, y
+    # Initializa client
+    def init(self, cfg, comm, t_data):
+        """Initialize the SmartRedis client
+        """
+        try:
+            from smartredis import Client
+        except ModuleNotFoundError as err:
+            if comm.rank==0: print(err)
 
-# Print FOM
-def print_fom(time2sol: float, train_data_sz: float, ssim_stats: dict):
-    print(f"Time to solution [s]: {time2sol:>.3f}")
-    total_sr_time = ssim_stats["tot_meta"]["max"][0] \
-                    + ssim_stats["tot_train"]["max"][0] \
-                    + ssim_stats["tot_infer"]["max"][0]
-    rel_sr_time = total_sr_time/time2sol*100
-    rel_meta_time = ssim_stats["tot_meta"]["max"][0]/time2sol*100
-    rel_train_time = ssim_stats["tot_train"]["max"][0]/time2sol*100
-    rel_infer_time = ssim_stats["tot_infer"]["max"][0]/time2sol*100
-    print(f"Relative total overhead [%]: {rel_sr_time:>.3f}")
-    print(f"Relative meta data overhead [%]: {rel_meta_time:>.3f}")
-    print(f"Relative train overhead [%]: {rel_train_time:>.3f}")
-    print(f"Relative infer overhead [%]: {rel_infer_time:>.3f}")
-    string = f": min = {train_data_sz/ssim_stats['train']['max'][0]:>4e} , " + \
-             f"max = {train_data_sz/ssim_stats['train']['min'][0]:>4e} , " + \
-             f"avg = {train_data_sz/ssim_stats['train']['avg']:>4e}"
-    print(f"Train data throughput [GB/s] " + string)
+        # Read the address of the co-located database first
+        if (cfg.online.smartsim.db_launch=='colocated'):
+            #prefix = f'{cfg.online.simprocs}-procs_case/'
+            #address = self.read_SSDB(prefix, comm)
+            address = environ['SSDB']
+        else:
+            address = None
 
-# Main data producer function
-def main():
-    """Emulate a data producing simulation for online training with SmartSim/SmartRedis
-    """
-    # MPI Init
-    from mpi4py import MPI
-    comm = MPI.COMM_WORLD
-    size = comm.Get_size()
-    rank = comm.Get_rank()
-    name = MPI.Get_processor_name()
-    comm.Barrier()
+        # Initialize Redis clients on each rank #####
+        if (comm.rank == 0):
+            print("\nInitializing Python clients ...", flush=True)
+        if (cfg.online.smartsim.db_nodes==1):
+            rtime = perf_counter()
+            sys.stdout.flush()
+            self.client = Client(address=address, cluster=False)
+            rtime = perf_counter() - rtime
+            t_data.t_init = t_data.t_init + rtime
+            t_data.i_init = t_data.i_init + 1
+        else:
+            rtime = perf_counter()
+            self.client = Client(address=address, cluster=True)
+            rtime = perf_counter() - rtime
+            t_data.t_init = t_data.t_init + rtime
+            t_data.i_init = t_data.i_init + 1
+        comm.comm.Barrier()
+        if (comm.rank == 0):
+            print("All done\n", flush=True)
 
-    t_start = time()
-
-    # Parse arguments
-    parser = ArgumentParser(description='SmartRedis Data Producer')
-    parser.add_argument('--model', default="mlp", type=str, help='ML model identifier (mlp, quadconv, gnn)')
-    parser.add_argument('--problem_size', default="debug", type=str, help='Size of problem to emulate (debug)')
-    parser.add_argument('--tolerance', default=0.01, type=float, help='ML model convergence tolerance')
-    parser.add_argument('--ppn', default=4, type=int, help='Number of processes per node')
-    parser.add_argument('--logging', default='no', help='Level of performance logging (no, verbose)')
-    parser.add_argument('--train_interval', type=int, default=5, help='Time step interval used to sync with ML training')
-    parser.add_argument('--db_launch', default="colocated", type=str, help='Database deployment (colocated, clustered)')
-    parser.add_argument('--db_nodes', default=1, type=int, help='Number of database nodes')
-    parser.add_argument('--db_max_mem_size', default=1, type=float, help='Maximum size of DB in GB')
-    args = parser.parse_args()
-
-    rankl = rank % args.ppn
-    if (rank==0 and args.logging=="verbose"):
-        print(f"Hello from MPI rank {rank}/{size}, local rank {rankl} and node {name}")
-    if (rank==0):
-        print(f'\nRunning with {args.db_nodes} DB nodes', flush=True)
-        print(f'and with {args.ppn} processes per node \n', flush=True)
-
-    # Initialize SmartRedis clients
-    client = SmartRedisClient(args, rank, size)
-    client.init_client(comm)
-
-    # Generate synthetic data for the specific model
-    train_array, coords, stats = generate_training_data(args, (rank, size))
-
-    # Send training metadata
-    client.setup(comm, stats)
-    if (args.model=="gnn"):
-        client.setup_graph(coords, rank)
-
-    # Emulate integration of PDEs with a do loop
-    numts = 1000
-    success = 0
-    tic_loop = perf_counter()
-    for step in range(numts):
-        # Sleep for a while to emulate the time required by PDE integration
-        if rank==0:
-            print(f"{step} \t {time()-t_start:>.2E}", flush=True)
-        sleep(0.5)
-        train_array, _, _ = generate_training_data(args, (rank,size), step)
-
-        if step>0 and step%60==0:
-            args.train_interval = int(args.train_interval*1.2)
-        if (step%args.train_interval==0):
-            # Check if model exists to perform inference
-            exists = client.model_exists(comm, args.model)
-            if exists:
-                if (args.problem_size=="debug" or args.problem_size=="small"):
-                    inputs = train_array[:,0]
-                    outputs = train_array[:,1]
-                error = client.infer_model(comm, args.model, inputs, outputs)
-                if (rank==0):
-                    print(f"\tPerformed inference with error={error:>8e}", flush=True)
-                if error <= args.tolerance:
-                    success += 1
+    # Read the address of the co-located database
+    def read_SSDB(self, prefix, comm):
+        SSDB_file = prefix + f'SSDB_{comm.name}.dat'
+        c = 0 
+        while True:
+            if (exists(SSDB_file)):
+                f = open(SSDB_file, "r")
+                SSDB = f.read()
+                f.close()
+                if (SSDB == ''):
+                    continue
                 else:
-                    success = 0
-
-            # Send training data
-            local_free_mem = 1 if client.check_db_mem(train_array) else 0
-            global_free_mem = comm.allreduce(local_free_mem)
-            if global_free_mem==size:
-                client.send_snapshot(train_array, step)
-                comm.Barrier()
-                if (rank==0):
-                    print(f'\tAll ranks finished sending training data', flush=True)
-                client.send_step(step)
+                    print(f'[{comm.rank}]: read SSDB={SSDB}')
+                    sys.stdout.flush()
+                    break
             else:
-                if (rank==0):
-                    print(f'\tOut of memory in DB, did not send training data', flush=True)
+                if (c==0):
+                    print(f'[{comm.rank}]: WARNING, looked for {SSDB_file} but did not find it')
+                    sys.stdout.flush()
+                c+=1
+                continue
+        comm.comm.Barrier()
+        if ('\n' in SSDB):
+            SSDB = SSDB.replace('\n', '') 
+        return SSDB
 
-            # Exit if model has converged to tolerence for 5 consecutive checks
-            if success>=5: 
-                if rank==0:
-                    print("\nModel has converged to tolerence for 5 consecutive checks", flush=True)
-                client.stop_train(comm)
+    # Read the size information from DB
+    def read_sizeInfo(self, cfg, comm, t_data):
+        if (comm.rank == 0):
+            print("\nGetting size info from DB ...")
+            sys.stdout.flush()
+        while True:
+            if (self.client.poll_tensor("sizeInfo",0,1)):
+                rtime = perf_counter()
+                dataSizeInfo = self.client.get_tensor('sizeInfo')
+                rtime = perf_counter() - rtime
+                t_data.t_meta = t_data.t_meta + rtime
+                t_data.i_meta = t_data.i_meta + 1
                 break
+        self.npts = dataSizeInfo[0]
+        self.ndTot = dataSizeInfo[1]
+        self.ndIn = dataSizeInfo[2]
+        self.ndOut = self.ndTot - self.ndIn
+        self.num_tot_tensors = dataSizeInfo[3]
+        self.num_db_tensors = dataSizeInfo[4]
+        self.head_rank = dataSizeInfo[5]
+        
+        max_batch_size = int(self.num_db_tensors/(cfg.ppn*cfg.ppd))
+        if (not cfg.online.global_shuffling):
+            self.tensor_batch = max_batch_size
+        else:
+            if (cfg.online.batch==0 or cfg.online.batch>max_batch_size):
+                self.tensor_batch = max_batch_size
+            else:
+                self.tensor_batch = cfg.online.batch
 
-    toc_loop = perf_counter()
-    time_to_solution = toc_loop - tic_loop
+        if (comm.rank == 0):
+            print(f"Samples per simulation tensor: {self.npts}")
+            print(f"Model input features: {self.ndIn}")
+            print(f"Model output targets: {self.ndOut}")
+            print(f"Total tensors in all DB: {self.num_tot_tensors}")
+            print(f"Tensors in local DB: {self.num_db_tensors}")
+            print(f"Simulation tensors per batch: {self.tensor_batch}")
+            sys.stdout.flush()
 
-    # Accumulate timing data for client and print summary
-    if rank==0:
-        print("Summary of timing data:", flush=True)
-    mpi_ops = {
-        "sum": MPI.SUM,
-        "min": MPI.MINLOC,
-        "max": MPI.MAXLOC
-    }
-    client.collect_stats(comm, mpi_ops)
-    if (rank==0):
-        client.print_stats()
-
-    # Print FOM
-    train_array_sz = train_array.itemsize * train_array.size / 1024 / 1024 / 1024
-    if rank==0:
-        print("\nFOM:")
-        print_fom(time_to_solution, train_array_sz, client.time_stats)
-
-
-if __name__ == "__main__":
-    main()
+    # Read the flag determining if data is overwritten in DB
+    def read_overwrite(self, comm, t_data):
+        while True:
+            if (self.client.poll_tensor("tensor-ow",0,1)):
+                rtime = perf_counter()
+                tmp = self.client.get_tensor('tensor-ow')
+                rtime = perf_counter() - rtime
+                t_data.t_meta = t_data.t_meta + rtime
+                t_data.i_meta = t_data.i_meta + 1 
+                break
+        self.dataOverWr = tmp[0]
+        if (comm.rank==0):
+            if (self.dataOverWr>0.5): 
+                print("\nTraining data is overwritten in DB \n")
+            else:
+                print("\nTraining data is accumulated in DB \n")
+            sys.stdout.flush()
