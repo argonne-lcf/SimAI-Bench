@@ -15,10 +15,6 @@ except:
     pass
 
 from torch.nn.parallel import DistributedDataParallel as DDP
-try:
-    import horovod.torch as hvd
-except:
-    pass
 
 from utils import metric_average
 
@@ -39,10 +35,7 @@ def train(comm, model, train_loader, optimizer, scaler, mixed_dtype,
             rtime = perf_counter()
             optimizer.zero_grad()
             with autocast(enabled=cfg.mixed_precision, dtype=mixed_dtype):
-                if (cfg.distributed=='horovod'):
-                    loss = model.training_step(data)
-                elif (cfg.distributed=='ddp'):
-                    loss = model.module.training_step(data)
+                loss = model.module.training_step(data)
             if (cfg.mixed_precision):
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
@@ -90,10 +83,7 @@ def validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
 
             # Perform forward pass
             with autocast(enabled=cfg.mixed_precision, dtype=mixed_dtype):
-                if (cfg.distributed=='horovod'):
-                    acc, loss = model.validation_step(data)
-                elif (cfg.distributed=='ddp'):
-                    acc, loss = model.module.validation_step(data)
+                acc, loss = model.module.validation_step(data)
             running_acc += acc
             running_loss += loss
                 
@@ -135,10 +125,7 @@ def test(comm, model, test_loader, mixed_dtype, cfg):
 
             # Perform forward pass
             with autocast(enabled=cfg.mixed_precision, dtype=mixed_dtype):
-                if (cfg.distributed=='horovod'):
-                    acc, loss = model.test_step(data, return_loss=True)
-                elif (cfg.distributed=='ddp'):
-                    acc, loss = model.module.test_step(data, return_loss=True)
+                acc, loss = model.module.test_step(data, return_loss=True)
             running_acc += acc
             running_loss += loss
                 
@@ -202,9 +189,8 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
     val_loader = loaders["validation"]["loader"]
     nVal = loaders["validation"]["samples"]
     
-    # Initializa DDP model
-    if (cfg.distributed=='ddp'):
-        model = DDP(model,broadcast_buffers=False,gradient_as_bucket_view=True)
+    # Wrap model with DDP
+    model = DDP(model,broadcast_buffers=False,gradient_as_bucket_view=True)
 
     # Initialize optimizer and scheduler
     if (cfg.optimizer == "Adam"):
@@ -216,15 +202,6 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
     if (cfg.scheduler == "Plateau"):
         if (comm.rank==0): print("Applying plateau scheduler\n")
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=500, factor=0.5)
-    
-    # Broadcast state if using Horovod
-    if (cfg.distributed=='horovod'):
-        hvd.broadcast_parameters(model.state_dict(), root_rank=0)
-        hvd.broadcast_optimizer_state(optimizer, root_rank=0)
-        optimizer = hvd.DistributedOptimizer(optimizer,
-                                             named_parameters=model.named_parameters(),
-                                             op=hvd.mpi_ops.Sum,
-                                             num_groups=1)
 
     # Loop over epochs
     for epoch in range(cfg.epochs):

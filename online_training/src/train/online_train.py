@@ -20,10 +20,6 @@ except:
     pass
 
 from torch.nn.parallel import DistributedDataParallel as DDP
-try:
-    import horovod.torch as hvd
-except:
-    pass
 
 from utils import metric_average
 from offline_train import train, validate, test
@@ -79,9 +75,8 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         scaler = None
         mixed_dtype = None
  
-    # Initializa DDP model
-    if (cfg.distributed=='ddp'):
-        model = DDP(model,broadcast_buffers=False,gradient_as_bucket_view=True)
+    # Wrap model with DDP
+    model = DDP(model,broadcast_buffers=False,gradient_as_bucket_view=True)
 
     # Initialize optimizer
     if (cfg.optimizer == "Adam"):
@@ -93,15 +88,6 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
     if (cfg.scheduler == "Plateau"):
         if (comm.rank==0): print("Applying plateau scheduler\n")
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=500, factor=0.5)
-    
-    # Broadcast state if using Horovod
-    if (cfg.distributed=='horovod'):
-        hvd.broadcast_parameters(model.state_dict(), root_rank=0)
-        hvd.broadcast_optimizer_state(optimizer, root_rank=0)
-        optimizer = hvd.DistributedOptimizer(optimizer,
-                                             named_parameters=model.named_parameters(),
-                                             op=hvd.mpi_ops.Sum,
-                                             num_groups=1)
 
     # Create training and validation Datasets
     num_db_tensors = client.num_db_tensors
@@ -184,14 +170,9 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         running_loss = 0.
         for _, tensor_keys in enumerate(train_tensor_loader):
             if (cfg.online.global_shuffling or update):
-                if (cfg.distributed=='horovod'):
-                    train_loader, rtime = model.online_dataloader(cfg, client, comm, 
-                                                                  tensor_keys,
-                                                                  shuffle=True)
-                elif (cfg.distributed=='ddp'):
-                    train_loader, rtime = model.module.online_dataloader(cfg, client, comm,
-                                                                         tensor_keys,
-                                                                         shuffle=True)
+                train_loader, rtime = model.module.online_dataloader(cfg, client, comm,
+                                                                     tensor_keys,
+                                                                     shuffle=True)
                 if (iepoch>0):
                     t_data.t_getBatch = t_data.t_getBatch + rtime
                     t_data.i_getBatch = t_data.i_getBatch + 1
@@ -220,10 +201,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             tic_v = perf_counter()
             for _, tensor_keys in enumerate(val_tensor_loader):
                 if (cfg.online.global_shuffling or update):
-                    if (cfg.distributed=='horovod'):
-                        val_loader, rtime = model.online_dataloader(cfg, client, comm, tensor_keys)
-                    elif (cfg.distributed=='ddp'):
-                        val_loader, rtime = model.module.online_dataloader(cfg, client, comm, tensor_keys)
+                    val_loader, rtime = model.module.online_dataloader(cfg, client, comm, tensor_keys)
                     if (iepoch>0):
                         t_data.t_getBatch_v = t_data.t_getBatch_v + rtime
                         t_data.i_getBatch_v = t_data.i_getBatch_v + 1
@@ -247,10 +225,9 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         # Share model checkpoint
         if ((iepoch+1)%cfg.online.checkpoints==0):
             if (comm.rankl==0):
-                if (cfg.distributed=="ddp"):
-                    jit_model = model.module.script_model()
-                    #model_arr = np.array([model_bytes])
-                    #client.client.put_tensor(cfg.model,model_arr)
+                jit_model = model.module.script_model()
+                #model_arr = np.array([model_bytes])
+                #client.client.put_tensor(cfg.model,model_arr)
                 if (cfg.model=="gnn"):
                     torch.jit.save(jit_model, f"/tmp/{cfg.model}.pt")
                 else:
