@@ -15,7 +15,7 @@ from online_training.data_producers import utils
 
 # Main data producer function
 def main():
-    """Emulate a data producing simulation for online training with SmartSim/SmartRedis
+    """Emulate a data producing simulation with online training and inference
     """
     # MPI Init
     MPI.Init()
