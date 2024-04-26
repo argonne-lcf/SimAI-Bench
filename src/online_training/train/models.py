@@ -10,8 +10,8 @@ import torch.nn as nn
 import numpy as np
 from utils import count_weights
 
-from mlp.model import MLP
-from gnn.model import GNN
+from .mlp.model import MLP
+from .gnn.model import GNN
 
 
 def load_model(cfg: DictConfig, comm, client, rng, t_data) -> Tuple[nn.Module, np.ndarray]: 
@@ -38,7 +38,7 @@ def load_model(cfg: DictConfig, comm, client, rng, t_data) -> Tuple[nn.Module, n
         print(f"\nLoaded {cfg.model} model with {n_params} trainable parameters \n")
 
     # Load/Generate training data
-    if not cfg.online.driver:
+    if not cfg.online.backend:
         if (cfg.data_path == "synthetic"):
             data = model.create_data(cfg, rng)
         else:

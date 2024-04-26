@@ -2,9 +2,9 @@
 
 # Set executables
 BASE_DIR=/Users/rbalin/Documents/Research/ALCF/SimAI-Bench/SimAI-Bench
-DRIVER=$BASE_DIR/online_training/src/backends/smartsim/ssim_driver.py
-SIM_EXE=$BASE_DIR/online_training/src/data_producers/smartredis/load_data.py
-ML_EXE=$BASE_DIR/online_training/src/train/main.py
+DRIVER=$BASE_DIR/src/online_training/drivers/ssim_driver.py
+SIM_EXE=$BASE_DIR/src/online_training/data_producers/sim.py
+ML_EXE=$BASE_DIR/src/online_training/train/train.py
 TRAIN_CONFIG_PATH=$PWD/conf
 TRAIN_CONFIG_NAME="train_config_mlp_small"
 

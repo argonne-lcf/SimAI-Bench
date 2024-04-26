@@ -16,7 +16,7 @@ except:
 
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from utils import metric_average
+from .utils import metric_average
 
 ### Train the model
 def train(comm, model, train_loader, optimizer, scaler, mixed_dtype, 

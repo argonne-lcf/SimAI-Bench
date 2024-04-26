@@ -101,10 +101,10 @@ def launch_coDB(cfg, nodelist, nNodes):
         if (cfg.train.config_path): ml_exe += f' --config-path {cfg.train.config_path}'
         if (cfg.train.config_name): ml_exe += f' --config-name {cfg.train.config_name}'
         ml_exe = ml_exe + f' ppn={cfg.run_args.mlprocs_pn}' \
-                        + f' online.driver=smartsim' \
+                        + f' online.backend=smartredis' \
                         + f' online.simprocs={cfg.run_args.simprocs}' \
-                        + f' online.smartsim.db_launch={cfg.database.deployment}' \
-                        + f' online.smartsim.db_nodes={cfg.run_args.db_nodes}'
+                        + f' online.smartredis.db_launch={cfg.database.deployment}' \
+                        + f' online.smartredis.db_nodes={cfg.run_args.db_nodes}'
         SSDB = colo_model.run_settings.env_vars['SSDB']
         if (cfg.database.launcher=='local'):
             ml_settings = RunSettings('python',

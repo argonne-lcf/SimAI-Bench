@@ -3,10 +3,8 @@
 ##### of the training and data transfer parts of the algorithm 
 ######
 
-import sys
 import numpy as np
 import math
-import torch
 
 class timeStats:
     # General training metrics
@@ -107,7 +105,7 @@ class timeStats:
             print(f"Number of validation loops executed : {int(avg)}\n")
 
         # Online training metrics
-        if cfg.online.driver:
+        if cfg.online.backend:
             avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_init)
             if comm.rank==0:
                 stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"

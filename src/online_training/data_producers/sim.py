@@ -10,8 +10,8 @@ mpi_ops = {
         "max": MPI.MAXLOC
     }
 
-import ..backends
-import utils
+from online_training.backends.ssim_client import SmartRedis_Sim_Client
+from online_training.data_producers import utils
 
 # Main data producer function
 def main():
@@ -43,15 +43,15 @@ def main():
 
     rankl = rank % args.ppn
     if rank==0 and args.logging=="verbose":
-        print(f"Hello from MPI rank {rank}/{size}, local rank {rankl} and node {name}")
+        print(f"Hello from MPI rank {rank}/{size}, local rank {rankl} and node {name}\n")
     if rank==0:
-        print(f'\nRunning with {args.db_nodes} DB nodes', flush=True)
+        print(f'Running with {args.db_nodes} DB nodes', flush=True)
         print(f'and with {args.ppn} processes per node \n', flush=True)
 
     # Initialize client
     if args.backend=='smartredis':
-        client = backends.ssim_client.SmartRedis_Sim_Client(args, rank, size)
-    client.init_client(comm)
+        client = SmartRedis_Sim_Client(args, rank, size)
+    client.init_client()
     comm.Barrier()
     if rank==0:
         print(f'All {args.backend} clients initialized \n', flush=True)
@@ -131,6 +131,7 @@ def main():
         print("\nFOM:")
         utils.print_fom(time_to_solution, train_array_sz, client.time_stats)
 
+    MPI.Finalize()
 
 if __name__ == "__main__":
     main()

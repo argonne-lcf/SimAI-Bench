@@ -13,14 +13,13 @@ import torch
 import socket
 import torch.distributed as dist
 
-# Import internal packages
-from online_train import onlineTrainLoop
-from offline_train import offlineTrainLoop
-import models
-from time_prof import timeStats
-import utils
-
-import ..backends
+# Import online_training modules
+from online_training.train.online_train import onlineTrainLoop
+from online_training.train.offline_train import offlineTrainLoop
+from online_training.train import models
+from online_training.train.time_prof import timeStats
+from online_training.train import utils
+from online_training.backends.ssim_client import SmartRedis_Train_Client
 
 ## Main function
 @hydra.main(version_base=None, config_path="./conf", config_name="train_config")
@@ -79,7 +78,7 @@ def main(cfg: DictConfig):
 
     # Initialize client if performing online training
     if cfg.online.backend=='smartredis':
-        client = backends.SmartRedisClient()
+        client = SmartRedis_Train_Client()
         client.init(cfg, comm, t_data)
         client.read_sizeInfo(cfg, comm, t_data)
         client.read_overwrite(comm, t_data)
@@ -117,7 +116,7 @@ def main(cfg: DictConfig):
         sys.stdout.flush()
 
     # Train model
-    if cfg.online.driver:
+    if cfg.online.backend:
         model, sample_data = onlineTrainLoop(cfg, comm, client, t_data, model)
     else:
         model, sample_data = offlineTrainLoop(cfg, comm, t_data, model, data)
@@ -128,12 +127,9 @@ def main(cfg: DictConfig):
     if (comm.rank == 0):
         model.eval()
         model.save_checkpoint(cfg.name, sample_data)
-        print("")
-        print("Saved model to disk\n")
-        sys.stdout.flush()
+        print("\nSaved model to disk\n")
 
     # Collect timing statistics
-    comm.comm.Barrier()
     if (t_data.i_train>0):
         if (comm.rank==0):
             print("\nTiming data (excluding first epoch):", flush=True)

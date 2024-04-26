@@ -1,3 +1,4 @@
+import sys
 import os, os.path
 from time import perf_counter
 import numpy as np
@@ -275,17 +276,17 @@ class SmartRedis_Train_Client:
             if comm.rank==0: print(err)
 
         # Read the address of the co-located database first
-        if (cfg.online.smartsim.db_launch=='colocated'):
+        if (cfg.online.smartredis.db_launch=='colocated'):
             #prefix = f'{cfg.online.simprocs}-procs_case/'
             #address = self.read_SSDB(prefix, comm)
-            address = environ['SSDB']
+            address = os.environ['SSDB']
         else:
             address = None
 
         # Initialize Redis clients on each rank #####
         if (comm.rank == 0):
             print("\nInitializing Python clients ...", flush=True)
-        if (cfg.online.smartsim.db_nodes==1):
+        if (cfg.online.smartredis.db_nodes==1):
             rtime = perf_counter()
             sys.stdout.flush()
             self.client = Client(address=address, cluster=False)

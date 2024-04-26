@@ -21,9 +21,9 @@ except:
 
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from utils import metric_average
-from offline_train import train, validate, test
-from datasets import RankDataset, RankStepDataset
+from .utils import metric_average
+from .offline_train import train, validate, test
+from .datasets import RankDataset, RankStepDataset
 
 # Generate training and validation data loaders for DB interaction
 def setup_online_dataloaders(cfg, comm, dataset, batch_size, split: List[float]):
@@ -32,7 +32,7 @@ def setup_online_dataloaders(cfg, comm, dataset, batch_size, split: List[float])
     generator = torch.Generator().manual_seed(12345)
     train_dataset, val_dataset = random_split(dataset, split, generator=generator)
  
-    if (cfg.online.smartsim.db_launch=="colocated"):
+    if (cfg.online.smartredis.db_launch=="colocated"):
         replicas = cfg.ppn*cfg.ppd
         rank_arg = comm.rankl
     else:
@@ -237,7 +237,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                     if client.client.model_exists(cfg.model):
                         client.client.delete_model(cfg.model)
                     client.client.set_model(cfg.model, model_bytes,
-                                            "TORCH", cfg.online.smartsim.inference_device)
+                                            "TORCH", cfg.online.smartredis.inference_device)
             if (comm.rank==0):
                 print("\nShared model checkpoint", flush=True)
 
