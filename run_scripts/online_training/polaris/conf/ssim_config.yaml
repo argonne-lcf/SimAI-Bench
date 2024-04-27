@@ -4,7 +4,7 @@ database:
     backend: "redis" # redis,keydb - launch Redis of KeyDB database
     deployment: "colocated" # colocated,clustered - deployment of database
     port: 6780
-    network_interface: "uds" # lo,hsn0,uds - network used for data transfer
+    network_interface: "udf" # lo,hsn0,uds - network used for data transfer
     # On Polaris: lo hsn0 for clustered, lo and uds for co-located
     exp_name: "SimAI-Bench" # string
     launcher: "pbs" # pbs, local - job scheduler
@@ -39,6 +39,7 @@ sim:
 train:
     executable: "" # string - path to ML training executable
     affinity: "" # string - GPU affinity script for training
-    config: "" # string - override path for training config file
+    config_path: "" # string - override path for training config file
+    config_name: "" # string - override name of training config file
 
    

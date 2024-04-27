@@ -3,7 +3,10 @@ import os, os.path
 from time import perf_counter
 import numpy as np
 import torch
-from torch_geometric.nn import knn_graph
+try:
+    from torch_geometric.nn import knn_graph
+except:
+    pass
 
 from smartredis import Client
 

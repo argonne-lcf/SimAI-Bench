@@ -18,6 +18,7 @@ version = "0.0.1"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "gmpy",
+    "hydra-core",
+    "gmpy2",
 ]
 urls = {source = "github.com/argonne-lcf/SimAI-Bench"}

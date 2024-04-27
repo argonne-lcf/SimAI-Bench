@@ -1,5 +1,5 @@
 from typing import Tuple, Optional
-import gmpy
+from gmpy2 import is_square
 import numpy as np
 import math
 
@@ -23,7 +23,7 @@ def generate_training_data(args, comm_info: Tuple[int,int],
         y = (y - (-1.0875)) / (1.0986 - (-1.0875)) # min-max scaling
         data = np.vstack((coords,y)).T
     elif (args.problem_size=="small"):
-        assert gmpy.is_square(size) or size==1, "Number of MPI ranks must be square or 1"
+        assert is_square(size) or size==1, "Number of MPI ranks must be square or 1"
         N = 32
         n_samples = N**2
         ndIn = 1

@@ -137,8 +137,8 @@ def main(cfg: DictConfig):
 
     # Exit
     if (comm.rank == 0):
-        print("Exiting ...")
-        sys.stdout.flush()
+        print("Exiting ...", flush=True)
+    comm.finalize()
 
 
 ## Run main

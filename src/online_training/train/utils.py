@@ -7,6 +7,9 @@ from os.path import exists
 import sys
 import numpy as np
 
+import mpi4py
+mpi4py.rc.initialize = False
+from mpi4py import MPI
 
 ### MPI Communicator class
 class MPI_COMM:
@@ -24,7 +27,7 @@ class MPI_COMM:
         self.maxloc = None
 
     def init(self, cfg, print_hello=False):
-        from mpi4py import MPI
+        MPI.Init()
         self.comm = MPI.COMM_WORLD
         self.size = self.comm.Get_size()
         self.rank = self.comm.Get_rank()
@@ -38,6 +41,9 @@ class MPI_COMM:
         if print_hello:
             print(f"Hello from MPI rank {self.rank}/{self.size} and local rank {self.rankl}")
             sys.stdout.flush()
+
+    def finalize(self):
+        MPI.Finalize()
 
 ### Compute the average of a quantity across all ranks
 def metric_average(comm, val):
