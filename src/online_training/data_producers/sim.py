@@ -111,16 +111,22 @@ def main():
             # Exit if model has converged to tolerence for 5 consecutive checks
             if success>=5: 
                 if rank==0:
-                    print("\nModel has converged to tolerence for 5 consecutive checks", flush=True)
+                    print("\nModel has converged to tolerence for 5 consecutive checks\n", flush=True)
                 client.stop_train(comm)
                 break
 
     toc_loop = perf_counter()
     time_to_solution = toc_loop - tic_loop
 
+    # Sync with training
+    client.check_train_status()
+    comm.Barrier()
+    if rank==0:
+        print("\nTraining is done too", flush=True)
+
     # Accumulate timing data for client and print summary
     if rank==0:
-        print("Summary of timing data:", flush=True)
+        print("\nSummary of timing data:", flush=True)
     client.collect_stats(comm, mpi_ops)
     if (rank==0):
         client.print_stats()

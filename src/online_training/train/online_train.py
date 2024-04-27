@@ -106,7 +106,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
     while True:
         if (client.client.poll_tensor("step",0,1)):
             rtime = perf_counter()
-            tmp = client.client.get_tensor('step')
+            step = client.client.get_tensor('step')
             rtime = perf_counter() - rtime
             t_data.t_meta = t_data.t_meta + rtime
             t_data.i_meta = t_data.i_meta + 1 
@@ -120,27 +120,27 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
     while True:
         tic_l = perf_counter()
         # Check to see if simulation says time to quit, if so break loop
-        if (client.client.poll_tensor("check-run",0,1)):
+        if (client.client.poll_tensor("sim-run",0,1)):
             rtime = perf_counter()
-            tmp = client.client.get_tensor('check-run')
+            sim_run = client.client.get_tensor('sim-run')
             rtime = perf_counter() - rtime
             t_data.t_meta = t_data.t_meta + rtime
             t_data.i_meta = t_data.i_meta + 1
-            if (tmp[0] < 0.5):
+            if (sim_run < 0.5):
                 if (comm.rank == 0):
                     print("\nSimulation says time to quit training ... \n", flush=True)
                 break
 
         # Get time step number from database
         rtime = perf_counter()
-        tmp = client.client.get_tensor('step')
+        step = client.client.get_tensor('step')
         rtime = perf_counter() - rtime
         t_data.t_meta = t_data.t_meta + rtime
         t_data.i_meta = t_data.i_meta + 1
 
         # If step number mismatch, create new data loaders and update
-        if (istep != tmp[0]): 
-            istep = tmp[0]
+        if (istep != step): 
+            istep = step
             step_list.append(istep)
             update = True
             if (comm.rank == 0):
@@ -247,6 +247,10 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             t_data.t_tot = t_data.t_tot + (toc_l - tic_l)
 
         iepoch = iepoch + 1 
+
+    # Sync with simulation
+    if comm.rankl==0:
+        client.client.put_tensor('train-run',np.array([0]))
  
     sample_data = next(iter(train_loader)) 
     return model, sample_data

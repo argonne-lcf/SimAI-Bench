@@ -60,9 +60,9 @@ class SmartRedis_Sim_Client:
     def setup_training_problem(self, data_info: dict):
         if (self.rank%self.ppn == 0):
             # Run-check
-            arr = np.array([1, 1], dtype=np.int64)
+            arr = np.array([1], dtype=np.int64)
             tic = perf_counter()
-            self.client.put_tensor('check-run', arr)
+            self.client.put_tensor('sim-run', arr)
             toc = perf_counter()
             self.times["tot_meta"] += toc - tic
 
@@ -81,9 +81,9 @@ class SmartRedis_Sim_Client:
 
             # Write overwrite tensor
             if self.ow:
-                arr = np.array([1, 1], dtype=np.int64)
+                arr = np.array([1], dtype=np.int64)
             else:
-                arr = np.array([0, 0], dtype=np.int64)
+                arr = np.array([0], dtype=np.int64)
             tic = perf_counter()
             self.client.put_tensor('tensor-ow', arr)
             toc = perf_counter()
@@ -100,25 +100,14 @@ class SmartRedis_Sim_Client:
         self.client.put_tensor(f'edge_index_{rank}', self.edge_index)
         toc = perf_counter()
         self.times["tot_meta"] += toc - tic
-
-    # Check if should keep running
-    def check_run(self) -> bool:
-        tic = perf_counter()
-        arr = self.client.get_tensor('check-run')
-        toc = perf_counter()
-        self.times["tot_meta"] += toc - tic
-        if (arr[0]==0):
-            return True
-        else:
-            return False
     
     # Signal to training sim is exiting
     def stop_train(self, comm):
         if (self.rank%self.ppn == 0):
             # Run-check
-            arr = np.array([0, 0], dtype=np.int64)
+            arr = np.array([0], dtype=np.int64)
             tic = perf_counter()
-            self.client.put_tensor('check-run', arr)
+            self.client.put_tensor('sim-run', arr)
             toc = perf_counter()
             self.times["tot_meta"] += toc - tic
 
@@ -156,7 +145,7 @@ class SmartRedis_Sim_Client:
     # Send time step
     def send_step(self, step: int):
         if (self.rank%self.ppn == 0):
-            step_arr = np.array([step, step], dtype=np.int64)
+            step_arr = np.array([step], dtype=np.int64)
             tic = perf_counter()
             self.client.put_tensor('step', step_arr)
             toc = perf_counter()
@@ -214,6 +203,12 @@ class SmartRedis_Sim_Client:
         avg_mse = comm.allreduce(local_mse)/self.size
         return avg_mse
     
+    # Check status of training
+    def check_train_status(self) -> None:
+        while True:
+            if (self.client.poll_tensor('train-run',0,1)):
+                break
+
     # Collect timing statistics across ranks
     def collect_stats(self, comm, mpi_ops):
         for _, (key, val) in enumerate(self.times.items()):
@@ -376,12 +371,11 @@ class SmartRedis_Train_Client:
         while True:
             if (self.client.poll_tensor("tensor-ow",0,1)):
                 rtime = perf_counter()
-                tmp = self.client.get_tensor('tensor-ow')
+                self.dataOverWr = self.client.get_tensor('tensor-ow')
                 rtime = perf_counter() - rtime
                 t_data.t_meta = t_data.t_meta + rtime
                 t_data.i_meta = t_data.i_meta + 1 
                 break
-        self.dataOverWr = tmp[0]
         if (comm.rank==0):
             if (self.dataOverWr>0.5): 
                 print("\nTraining data is overwritten in DB \n")
