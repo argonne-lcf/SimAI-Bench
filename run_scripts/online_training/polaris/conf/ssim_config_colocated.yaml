@@ -7,7 +7,7 @@ database:
     network_interface: "udf" # lo,hsn0,uds - network used for data transfer
     # On Polaris: lo hsn0 for clustered, lo and uds for co-located
     exp_name: "SimAI-Bench" # string
-    launcher: "pbs" # pbs, local - job scheduler
+    launcher: "pals" # pals, local - job scheduler
 
 # Run config
 run_args:
