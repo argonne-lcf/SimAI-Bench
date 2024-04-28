@@ -215,8 +215,8 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                     buffer = io.BytesIO()
                     torch.jit.save(jit_model, buffer)
                     model_bytes = buffer.getvalue()
-                    if client.model_exists(cfg.model):
-                        client.delete_model(cfg.model)
+                    #if client.model_exists(cfg.model):
+                    #    client.delete_model(cfg.model)
                     client.put_model(cfg.model, model_bytes,
                                      device=cfg.online.smartredis.inference_device)
             if (comm.rank==0):

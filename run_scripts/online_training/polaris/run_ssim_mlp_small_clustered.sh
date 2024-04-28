@@ -54,7 +54,7 @@ export SR_CMD_TIMEOUT=1000 # default is 100 ms
 export SR_THREAD_COUNT=4 # default is 4
 
 # Run
-SIM_ARGS="--model\=mlp --problem_size\=small --db_launch\=clustered --db_nodes\=${DB_NODES} --ppn\=${SIM_RANKS}  --tolerance\=0.002 --train_interval\=10 --db_max_mem_size\=0.1"
+SIM_ARGS="--model\=mlp --problem_size\=small --db_launch\=clustered --db_nodes\=${DB_NODES} --ppn\=${SIM_PROCS_PER_NODE}  --tolerance\=0.002 --train_interval\=10 --db_max_mem_size\=0.1"
 python $DRIVER --config-path $DRIVER_CONFIG_PATH --config-name $DRIVER_CONFIG_NAME \
     sim.executable=$SIM_EXE sim.arguments="${SIM_ARGS}" \
     train.executable=$ML_EXE train.config_path=${TRAIN_CONFIG_PATH} train.config_name=${TRAIN_CONFIG_NAME} \
