@@ -104,7 +104,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         sys.stdout.flush()
     while True:
         if client.key_exists("step"):
-            step = client.get_array('step', 'tot_meta')
+            step = client.get_value('step')
             break
     if (comm.rank == 0):
         print("Found data, starting training loop\n")
@@ -116,14 +116,14 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
     while True:
         # Check to see if simulation says time to quit, if so break loop
         if client.key_exists("sim-run"):
-            sim_run = client.get_array('sim-run', 'tot_meta')
+            sim_run = client.get_value('sim-run')
             if (sim_run < 0.5):
                 if (comm.rank == 0):
                     print("\nSimulation says time to quit training ... \n", flush=True)
                 break
 
         # Get time step number from database
-        step = client.get_array('step', 'tot_meta')
+        step = client.get_value('step')
 
         # If step number mismatch, create new data loaders and update
         if (istep != step): 
@@ -172,7 +172,6 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         toc_t = perf_counter()
         if (iepoch>0):
             nTrain = client.tensor_batch * client.npts
-            print(nTrain)
             t_data.t_train = t_data.t_train + (toc_t - tic_t)
             t_data.tp_train = t_data.tp_train + nTrain/(toc_t - tic_t)
             t_data.i_train = t_data.i_train + 1
@@ -231,7 +230,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
 
     # Sync with simulation
     if comm.rankl==0:
-        client.put_array('train-run',np.array([0]),'tot_meta')
+        client.put_value('train-run', 0)
  
     sample_data = next(iter(train_loader)) 
     return model, sample_data

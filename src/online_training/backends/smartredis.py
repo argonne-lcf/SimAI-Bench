@@ -304,16 +304,56 @@ class SmartRedis_Train_Client:
         toc = perf_counter()
         self.times['init'] = toc - tic
 
+    # Check if tensor key exists
+    def key_exists(self, key: str) -> bool:
+        return self.client.poll_tensor(key,0,1)
+
+    # Get array (tensor) from DB
+    def get_array(self, key: str, comm_type: str) -> np.ndarray:
+        rtime = perf_counter()
+        array = self.client.get_tensor(key)
+        rtime = perf_counter() - rtime
+        if 'train' in comm_type:
+            self.times["tot_train"] += rtime
+            self.times["train"].append(rtime)
+            self.train_array_sz = array.itemsize * array.size
+        elif 'meta' in comm_type:
+            self.times['tot_meta'] += rtime
+        return array
+    
+    # Get value from DB
+    def get_value(self, key: str):
+        rtime = perf_counter()
+        val = self.client.get_tensor(key)[0]
+        rtime = perf_counter() - rtime
+        self.times['tot_meta'] += rtime
+        return val
+    
+    # Put array (tensor) to DB
+    def put_array(self, key: str, array: np.ndarray, comm_type: str) -> None:
+        rtime = perf_counter()
+        self.client.put_tensor(key, array)
+        rtime = perf_counter() - rtime
+        if 'train' in comm_type:
+            self.times["tot_train"] += rtime
+            self.times["train"].append(rtime)
+        elif 'meta' in comm_type:
+            self.times['tot_meta'] += rtime
+
+    # Put value to DB
+    def put_value(self, key: str, value) -> None:
+        rtime = perf_counter()
+        self.client.put_tensor(key, np.array([value]))
+        rtime = perf_counter() - rtime
+        self.times['tot_meta'] += rtime
+
     # Read the size information from DB
     def read_sizeInfo(self):
         if (self.rank == 0):
             print("\nGetting size info from DB ...", flush=True)
         while True:
-            if (self.client.poll_tensor("sizeInfo",0,1)):
-                rtime = perf_counter()
-                dataSizeInfo = self.client.get_tensor('sizeInfo')
-                rtime = perf_counter() - rtime
-                self.times["tot_meta"] += rtime
+            if (self.key_exists("sizeInfo")):
+                dataSizeInfo = self.get_array('sizeInfo','meta')
                 break
         self.npts = dataSizeInfo[0]
         self.ndTot = dataSizeInfo[1]
@@ -344,11 +384,8 @@ class SmartRedis_Train_Client:
     # Read the flag determining if data is overwritten in DB
     def read_overwrite(self):
         while True:
-            if (self.client.poll_tensor("tensor-ow",0,1)):
-                rtime = perf_counter()
-                self.dataOverWr = self.client.get_tensor('tensor-ow')
-                rtime = perf_counter() - rtime
-                self.times["tot_meta"] += rtime
+            if (self.key_exists("tensor-ow")):
+                self.dataOverWr = self.get_value('tensor-ow')
                 break
         if (self.rank==0):
             if (self.dataOverWr>0.5): 
@@ -361,34 +398,6 @@ class SmartRedis_Train_Client:
     def setup_problem(self):
         self.read_sizeInfo()
         self.read_overwrite()
-
-    # Check if tensor key exists
-    def key_exists(self, key: str) -> bool:
-        return self.client.poll_tensor(key,0,1)
-    
-    # Get array (tensor) from DB
-    def get_array(self, key: str, comm_type: str) -> np.ndarray:
-        rtime = perf_counter()
-        array = self.client.get_tensor(key)
-        rtime = perf_counter() - rtime
-        if 'train' in comm_type:
-            self.times["tot_train"] += rtime
-            self.times["train"].append(rtime)
-            self.train_array_sz = array.itemsize * array.size
-        elif 'meta' in comm_type:
-            self.times['tot_meta'] += rtime
-        return array
-    
-    # Put array (tensor) to DB
-    def put_array(self, key: str, array: np.ndarray, comm_type: str) -> None:
-        rtime = perf_counter()
-        array = self.client.put_tensor(key, array)
-        rtime = perf_counter() - rtime
-        if 'train' in comm_type:
-            self.times["tot_train"] += rtime
-            self.times["train"].append(rtime)
-        elif 'meta' in comm_type:
-            self.times['tot_meta'] += rtime
     
     # Check if model key exists
     def model_exists(self, key: str) -> bool:
