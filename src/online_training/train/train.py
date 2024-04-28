@@ -19,7 +19,7 @@ from online_training.train.offline_train import offlineTrainLoop
 from online_training.train import models
 from online_training.train.time_prof import timeStats
 from online_training.train import utils
-from online_training.backends.ssim_client import SmartRedis_Train_Client
+from online_training.backends.smartredis import SmartRedis_Train_Client
 
 ## Main function
 @hydra.main(version_base=None, config_path="./conf", config_name="train_config")
@@ -77,16 +77,18 @@ def main(cfg: DictConfig):
     t_data = timeStats()
 
     # Initialize client if performing online training
-    if cfg.online.backend=='smartredis':
-        client = SmartRedis_Train_Client()
-        client.init(cfg, comm, t_data)
-        client.read_sizeInfo(cfg, comm, t_data)
-        client.read_overwrite(comm, t_data)
-    else:
-        client = None
+    client = None
+    if cfg.online.backend:
+        if cfg.online.backend=='smartredis':
+            client = SmartRedis_Train_Client(cfg, comm.rank, comm.size)
+        client.init()
+        comm.comm.Barrier()
+        if comm.rank == 0:
+            print(f"\nInitialized all {cfg.online.backend} clients\n", flush=True)
+        client.setup_problem()
 
     # Instantiate the model and get the training data
-    model, data = models.load_model(cfg, comm, client, rng, t_data)
+    model, data = models.load_model(cfg, comm, client, rng)
     
     # Set device to run on and offload model
     device = torch.device(cfg.device)
@@ -112,8 +114,7 @@ def main(cfg: DictConfig):
     if (cfg.device != 'cpu'):
         model.to(device)
     if (comm.rank == 0):
-        print(f"\nRunning on device: {cfg.device} \n")
-        sys.stdout.flush()
+        print(f"\nRunning on device: {cfg.device} \n", flush=True)
 
     # Train model
     if cfg.online.backend:
@@ -129,15 +130,24 @@ def main(cfg: DictConfig):
         model.save_checkpoint(cfg.name, sample_data)
         print("\nSaved model to disk\n")
 
-    # Collect timing statistics
+    # Collect timing statistics for training
     if (t_data.i_train>0):
         if (comm.rank==0):
-            print("\nTiming data (excluding first epoch):", flush=True)
-        t_data.printTimeData(cfg, comm)
+            print("\nTiming data:", flush=True)
+        t_data.printTimeData(comm)
 
-    # Exit
-    if (comm.rank == 0):
-        print("Exiting ...", flush=True)
+    # Accumulate timing data for client and print summary
+    client.collect_stats(comm)
+    if comm.rank==0:
+        print("\nSummary of client timing data:", flush=True)
+        client.print_stats()
+
+    # Print FOM
+    train_array_sz = client.train_array_sz / 1024 / 1024 / 1024
+    if comm.rank==0:
+        print("\nFOM:")
+        utils.print_fom(t_data.t_tot, train_array_sz, client.time_stats)
+
     comm.finalize()
 
 

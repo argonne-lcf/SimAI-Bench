@@ -14,7 +14,7 @@ from .mlp.model import MLP
 from .gnn.model import GNN
 
 
-def load_model(cfg: DictConfig, comm, client, rng, t_data) -> Tuple[nn.Module, np.ndarray]: 
+def load_model(cfg: DictConfig, comm, client, rng) -> Tuple[nn.Module, np.ndarray]: 
     """ 
     Return the selected model and its training data
 
@@ -30,9 +30,8 @@ def load_model(cfg: DictConfig, comm, client, rng, t_data) -> Tuple[nn.Module, n
                      numNeurons=cfg.mlp.neurons, numLayers=cfg.mlp.layers)
     elif (cfg.model=="gnn"):
         model = GNN(cfg)
-        model.setup_local_graph(cfg, client, comm.rank, t_data)
+        model.setup_local_graph(client, comm.rank)
 
-    
     n_params = count_weights(model)
     if (comm.rank == 0):
         print(f"\nLoaded {cfg.model} model with {n_params} trainable parameters \n")

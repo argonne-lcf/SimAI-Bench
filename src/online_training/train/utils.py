@@ -67,5 +67,19 @@ def count_weights(model):
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     return n_params
 
-
+# Print FOM
+def print_fom(time2sol: float, train_data_sz: float, ssim_stats: dict):
+    print(f"Time to solution [s]: {time2sol:>.3f}")
+    total_sr_time = ssim_stats["tot_meta"]["max"][0] \
+                    + ssim_stats["tot_train"]["max"][0]
+    rel_sr_time = total_sr_time/time2sol*100
+    rel_meta_time = ssim_stats["tot_meta"]["max"][0]/time2sol*100
+    rel_train_time = ssim_stats["tot_train"]["max"][0]/time2sol*100
+    print(f"Relative total overhead [%]: {rel_sr_time:>.3f}")
+    print(f"Relative meta data overhead [%]: {rel_meta_time:>.3f}")
+    print(f"Relative train overhead [%]: {rel_train_time:>.3f}")
+    string = f": min = {train_data_sz/ssim_stats['train']['max'][0]:>4e} , " + \
+             f"max = {train_data_sz/ssim_stats['train']['min'][0]:>4e} , " + \
+             f"avg = {train_data_sz/ssim_stats['train']['avg']:>4e}"
+    print(f"Train data throughput [GB/s] " + string)
 

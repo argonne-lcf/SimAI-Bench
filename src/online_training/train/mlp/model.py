@@ -225,7 +225,7 @@ class MLP(nn.Module):
             }
         }
     
-    def online_scaler(self, comm, client, data: torch.Tensor) -> torch.Tensor:
+    def online_scaler(self, comm, data: torch.Tensor) -> torch.Tensor:
         """
         Perform the min-max scaling on the model outputs when online training
         """
@@ -261,25 +261,22 @@ class MLP(nn.Module):
         """
         if (cfg.logging=='debug'):
             print(f'[{comm.rank}]: Grabbing tensors with key {keys}', flush=True)
-        rtime = perf_counter()
-        concat_tensor = torch.cat([torch.from_numpy(client.client.get_tensor(key).astype('float32')) \
-                                    for key in keys], dim=0)
-        rtime = perf_counter() - rtime
-
-        #concat_tensor = self.online_scaler(comm, client, concat_tensor)
-
+        
         if (cfg.precision == "fp32" or cfg.precision == "tf32"):
-            concat_tensor = concat_tensor.type(torch.float32)
+            dtype = torch.float32
         elif (cfg.precision == "fp64"):
-            concat_tensor = concat_tensor.type(torch.float64)
+            dtype = torch.float64
         elif (cfg.precision == "fp16"):
-            concat_tensor = concat_tensor.type(torch.float16)
+            dtype = torch.float16
         elif (cfg.precision == "bf16"):
-            concat_tensor = concat_tensor.type(torch.bfloat16)
+            dtype = torch.bfloat16
+
+        concat_tensor = torch.cat([torch.from_numpy(client.get_array(key, 'train')).type(dtype) \
+                                    for key in keys], dim=0)
 
         data_loader = DataLoader(MiniBatchDataset(concat_tensor), 
                                  shuffle=shuffle, batch_size=cfg.mini_batch)
-        return data_loader, rtime
+        return data_loader
 
     def script_model(self):
         """

@@ -19,18 +19,6 @@ class timeStats:
     i_compMiniBatch = 0 # local number of times computing mini-batch
     t_AveCompMiniBatch = 0.0 # local average time spent computing mini-batch
 
-    # Online training metrics
-    t_getBatch = 0.0 # local accumulated time spent grabbing training data for each batch
-    i_getBatch = 0 # local number of times training data is grabbed
-    t_AveGetBatch = 0.0 # local average time spent grabbing training data for each batch
-    t_getBatch_v = 0.0 # local accumulated time spent grabbing validation data for each batch
-    i_getBatch_v = 0 # local number of times validation data is grabbed
-    t_AveGetBatch_v = 0.0 # local average time spent grabbing validation data for each batch
-    t_init = 0.0 # local accumulated time spent initializing Redis clients
-    i_init = 0 # local number of times initializing Redis clients
-    t_meta = 0.0 # local accumulated time spent transfering metadata
-    i_meta = 0 # local number of times metadata is transferred
-
     # Compute min, max, mean and standard deviation across all processes for a time measure
     def computeStats_f(self, comm, var):
         summ = comm.comm.allreduce(np.array(var),op=comm.sum)
@@ -43,8 +31,9 @@ class timeStats:
             min_loc = comm.comm.allreduce((var,comm.rank),op=comm.minloc)
             max_loc = comm.comm.allreduce((var,comm.rank),op=comm.maxloc)
         except:
-            min_loc = [0, 0]
-            max_loc = [0, 0]
+            min_loc = [-1, -1]
+            max_loc = [-1, -1]
+            comm.Barrier()
         return avg, std, summ, [min_loc[0],min_loc[1]], [max_loc[0],max_loc[1]]
 
     # Compute min, max, mean and standard deviation across all processes for a counter
@@ -58,14 +47,13 @@ class timeStats:
         return avg, std
 
     # Print the timing data
-    def printTimeData(self, cfg, comm):
-        
+    def printTimeData(self, comm):
         # General training metrics
         avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_tot)
         if comm.rank==0:
             stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}"
             #stats_string_2 = f": min [{min_arr[0]:>8e},{min_arr[1]:>d}], max [{max_arr[0]:>8e},{max_arr[1]:>d}], avg [{avg:>8e},.], std [{std:>8e},.]"
-            print("Total training time [s] " + stats_string + "\n")
+            print("Total training time [s] " + stats_string )
         
         avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_train)
         if comm.rank==0:
@@ -77,7 +65,7 @@ class timeStats:
             print("Total training throughput [samples/s] " + stats_string)
         avg, std = self.computeStats_i(comm, self.i_train)
         if comm.rank==0:
-            print(f"Number of train loops executed : {int(avg)}\n")
+            print(f"Number of train loops executed : {int(avg)}")
         
         avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_compMiniBatch)
         if comm.rank==0:
@@ -89,7 +77,7 @@ class timeStats:
             print(f"Average time for a single batch computation [s] " + stats_string)
         avg, std = self.computeStats_i(comm, self.i_compMiniBatch)
         if comm.rank==0:
-            print(f"Number of batches computed : {int(avg)}\n")
+            print(f"Number of batches computed : {int(avg)}")
 
         avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_val)
         if comm.rank==0:
@@ -102,48 +90,8 @@ class timeStats:
                 print(f"Total validation throughput [samples/s] " + stats_string)
         avg, std = self.computeStats_i(comm, self.i_val)
         if comm.rank==0:
-            print(f"Number of validation loops executed : {int(avg)}\n")
+            print(f"Number of validation loops executed : {int(avg)}")
 
-        # Online training metrics
-        if cfg.online.backend:
-            avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_init)
-            if comm.rank==0:
-                stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"
-                print(f"SmartRedis client initialization [s] " + stats_string)
-
-            avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_meta)
-            if comm.rank==0:
-                stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"
-                print(f"SmartRedis metadata transfer [s] " + stats_string)
-            avg, std = self.computeStats_i(comm, self.i_meta)
-            if comm.rank==0:
-                print(f"SmartRedis calls for metadata transfer : {int(avg)}")
-
-            avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_getBatch)
-            if comm.rank==0:
-                stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"
-                print(f"SmartRedis training batch data transfer [s] " + stats_string)
-            avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_AveGetBatch)
-            if comm.rank==0:
-                stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"
-                print(f"SmartRedis average training batch data transfer [s] " + stats_string)
-            avg, std = self.computeStats_i(comm, self.i_getBatch)
-            if comm.rank==0:
-                print(f"SmartRedis calls for training batch data transfer : {int(avg)}")
-            
-            avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_getBatch_v)
-            if comm.rank==0:
-                stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"
-                print(f"SmartRedis validation batch data transfer [s] " + stats_string)
-            avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_AveGetBatch_v)
-            if comm.rank==0:
-                stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"
-                print(f"SmartRedis average validation batch data transfer [s] " + stats_string)
-            avg, std = self.computeStats_i(comm, self.i_getBatch_v)
-            if comm.rank==0:
-                print(f"SmartRedis calls for validation batch data transfer : {int(avg)}")
-
-        if comm.rank==0: print("")
     
         
 

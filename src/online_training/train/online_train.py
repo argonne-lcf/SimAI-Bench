@@ -58,7 +58,6 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
     # Setup and variable initialization
     istep = -1 # initialize the simulation step number
     iepoch = 0 # epoch number
-    rerun_check = 1 # 0 means quit training
 
     # Set precision of model
     if (cfg.precision == "fp32" or cfg.precision == "tf32"): model.float()
@@ -76,7 +75,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         mixed_dtype = None
  
     # Wrap model with DDP
-    model = DDP(model,broadcast_buffers=False,gradient_as_bucket_view=True)
+    model = DDP(model)
 
     # Initialize optimizer
     if (cfg.optimizer == "Adam"):
@@ -104,12 +103,8 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         print("\nWaiting for training data to be populated in DB ...")
         sys.stdout.flush()
     while True:
-        if (client.client.poll_tensor("step",0,1)):
-            rtime = perf_counter()
-            step = client.client.get_tensor('step')
-            rtime = perf_counter() - rtime
-            t_data.t_meta = t_data.t_meta + rtime
-            t_data.i_meta = t_data.i_meta + 1 
+        if client.key_exists("step"):
+            step = client.get_array('step', 'tot_meta')
             break
     if (comm.rank == 0):
         print("Found data, starting training loop\n")
@@ -117,26 +112,18 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
 
     # Start training loop
     step_list = []
+    tic_loop = perf_counter()
     while True:
-        tic_l = perf_counter()
         # Check to see if simulation says time to quit, if so break loop
-        if (client.client.poll_tensor("sim-run",0,1)):
-            rtime = perf_counter()
-            sim_run = client.client.get_tensor('sim-run')
-            rtime = perf_counter() - rtime
-            t_data.t_meta = t_data.t_meta + rtime
-            t_data.i_meta = t_data.i_meta + 1
+        if client.key_exists("sim-run"):
+            sim_run = client.get_array('sim-run', 'tot_meta')
             if (sim_run < 0.5):
                 if (comm.rank == 0):
                     print("\nSimulation says time to quit training ... \n", flush=True)
                 break
 
         # Get time step number from database
-        rtime = perf_counter()
-        step = client.client.get_tensor('step')
-        rtime = perf_counter() - rtime
-        t_data.t_meta = t_data.t_meta + rtime
-        t_data.i_meta = t_data.i_meta + 1
+        step = client.get_array('step', 'tot_meta')
 
         # If step number mismatch, create new data loaders and update
         if (istep != step): 
@@ -166,30 +153,28 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         
         # Perform training step
         if train_sampler is not None: train_sampler.set_epoch(iepoch)
-        tic_t = perf_counter()
         running_loss = 0.
+        tic_t = perf_counter()
         for _, tensor_keys in enumerate(train_tensor_loader):
             if (cfg.online.global_shuffling or update):
-                train_loader, rtime = model.module.online_dataloader(cfg, client, comm,
-                                                                     tensor_keys,
-                                                                     shuffle=True)
-                if (iepoch>0):
-                    t_data.t_getBatch = t_data.t_getBatch + rtime
-                    t_data.i_getBatch = t_data.i_getBatch + 1
-                    fact = float(1.0/t_data.i_getBatch)
-                    t_data.t_AveGetBatch = fact*rtime + (1.0-fact)*t_data.t_AveGetBatch
-            
+                train_loader = model.module.online_dataloader(cfg, client, comm,
+                                                              tensor_keys,
+                                                              shuffle=True)
             loss, t_data = train(comm, model, 
                                  train_loader, optimizer, 
                                  scaler, mixed_dtype, iepoch, 
                                  t_data, cfg)
+            
             running_loss += loss
 
         local_loss = running_loss / len(train_tensor_loader)
         global_loss = metric_average(comm, local_loss)
         toc_t = perf_counter()
         if (iepoch>0):
+            nTrain = client.tensor_batch * client.npts
+            print(nTrain)
             t_data.t_train = t_data.t_train + (toc_t - tic_t)
+            t_data.tp_train = t_data.tp_train + nTrain/(toc_t - tic_t)
             t_data.i_train = t_data.i_train + 1
         if comm.rank == 0: 
             print(f"Training set: | Epoch: {iepoch+1} | Average loss: {global_loss:>8e} \n", flush=True)
@@ -201,14 +186,9 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             tic_v = perf_counter()
             for _, tensor_keys in enumerate(val_tensor_loader):
                 if (cfg.online.global_shuffling or update):
-                    val_loader, rtime = model.module.online_dataloader(cfg, client, comm, tensor_keys)
-                    if (iepoch>0):
-                        t_data.t_getBatch_v = t_data.t_getBatch_v + rtime
-                        t_data.i_getBatch_v = t_data.i_getBatch_v + 1
-                        fact = float(1.0/t_data.i_getBatch_v)
-                        t_data.t_AveGetBatch_v = fact*rtime + (1.0-fact)*t_data.t_AveGetBatch_v
+                    val_loader = model.module.online_dataloader(cfg, client, comm, tensor_keys)
                 acc, loss, _ = validate(comm, model, val_loader, 
-                                                      mixed_dtype, iepoch, cfg)
+                                        mixed_dtype, iepoch, cfg)
                 running_loss += loss
                 running_acc += acc
             val_loss = running_loss / len(val_tensor_loader)
@@ -217,7 +197,9 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             global_val_acc = metric_average(comm, val_acc)
             toc_v = perf_counter()
             if (iepoch>0):
+                nVal = len(tensor_keys) * client.npts
                 t_data.t_val = t_data.t_val + (toc_v - tic_v)
+                t_data.tp_val = t_data.tp_val + nVal/(toc_v - tic_v)
                 t_data.i_val = t_data.i_val + 1
             if comm.rank == 0: 
                 print(f"Validation set: | Epoch: {iepoch+1} | Average accuracy: {global_val_acc:>8e} | Average Loss: {global_val_loss:>8e}") 
@@ -234,23 +216,22 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                     buffer = io.BytesIO()
                     torch.jit.save(jit_model, buffer)
                     model_bytes = buffer.getvalue()
-                    if client.client.model_exists(cfg.model):
-                        client.client.delete_model(cfg.model)
-                    client.client.set_model(cfg.model, model_bytes,
-                                            "TORCH", cfg.online.smartredis.inference_device)
+                    if client.model_exists(cfg.model):
+                        client.delete_model(cfg.model)
+                    client.put_model(cfg.model, model_bytes,
+                                     device=cfg.online.smartredis.inference_device)
             if (comm.rank==0):
                 print("\nShared model checkpoint", flush=True)
 
-        # Time entire loop
-        toc_l = perf_counter()
-        if (iepoch>0):
-            t_data.t_tot = t_data.t_tot + (toc_l - tic_l)
-
         iepoch = iepoch + 1 
+
+    toc_loop = perf_counter()
+    t_data.t_tot = toc_loop - tic_loop
+
 
     # Sync with simulation
     if comm.rankl==0:
-        client.client.put_tensor('train-run',np.array([0]))
+        client.put_array('train-run',np.array([0]),'tot_meta')
  
     sample_data = next(iter(train_loader)) 
     return model, sample_data

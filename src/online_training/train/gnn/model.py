@@ -80,11 +80,11 @@ class GNN(nn.Module):
                        n_messagePassing_layers = self.cfg.n_message_passing_layers)
         return model
     
-    def setup_local_graph(self, train_cfg, client, rank, t_data):
+    def setup_local_graph(self, client, rank):
         """
         Setup the rank-local graph from the mesh data
         :param train_cfg: training config
-        :param client: SmartRedis client class
+        :param client: client class
         :param comm: MPI communicator class
         """
         pos_key = f'pos_node_{rank}'
@@ -92,17 +92,13 @@ class GNN(nn.Module):
         #gid_key = 'global_ids_rank_%d_size_%d' %(comm.rank,comm.size)
         #lmask_key = 'local_unique_mask_rank_%d_size_%d' %(comm.rank,comm.size)
         #hmask_key = 'halo_unique_mask_rank_%d_size_%d' %(comm.rank,comm.size)
-
-        if train_cfg.online.driver=="smartsim":
+        
+        if client is not None:
             while True:
-                if (client.client.poll_tensor(edge_key,0,1)):
+                if client.key_exists(edge_key):
                     break
-            rtime = perf_counter()
-            pos = client.client.get_tensor(pos_key).astype('float32')
-            ei = client.client.get_tensor(edge_key).astype('int64')
-            rtime = perf_counter() - rtime
-            t_data.t_meta = t_data.t_meta + rtime
-            t_data.i_meta = t_data.i_meta + 1
+            pos = client.get_array(pos_key, 'tot_meta').astype('float32')
+            ei = client.get_array(edge_key, 'tot_meta').astype('int64')
             if len(pos.shape)<=1:
                 pos = pos[:,np.newaxis]
             #gli = client.client.get_tensor(gid_key).astype('int64').reshape((-1,1))
@@ -305,10 +301,8 @@ class GNN(nn.Module):
         elif (cfg.precision == "bf16"):
             dtype = torch.bfloat16
 
-        rtime = perf_counter()
-        tensor_list = [torch.from_numpy(client.client.get_tensor(key)).type(dtype) \
+        tensor_list = [torch.from_numpy(client.get_array(key, 'train')).type(dtype) \
                             for key in keys]
-        rtime = perf_counter() - rtime
 
         # Populate edge_attrs
         #cart = Cartesian(norm=False, max_value = None, cat = False)
@@ -328,7 +322,7 @@ class GNN(nn.Module):
             dataset.append(data)
         data_loader = DataLoader(dataset, batch_size=cfg.mini_batch, 
                                  shuffle=False)
-        return data_loader, rtime
+        return data_loader
     
     def script_model(self):
         """

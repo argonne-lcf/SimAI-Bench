@@ -10,7 +10,7 @@ mpi_ops = {
         "max": MPI.MAXLOC
     }
 
-from online_training.backends.ssim_client import SmartRedis_Sim_Client
+from online_training.backends.smartredis import SmartRedis_Sim_Client
 from online_training.data_producers import utils
 
 # Main data producer function
@@ -57,12 +57,10 @@ def main():
         print(f'All {args.backend} clients initialized \n', flush=True)
 
     # Generate synthetic data for the specific model
-    train_array, coords, stats = utils.generate_training_data(args, (rank, size))
+    train_array, coords, data_stats = utils.generate_training_data(args, (rank, size))
 
     # Send training metadata
-    client.setup_training_problem(stats)
-    if (args.model=="gnn"):
-        client.setup_graph(coords, rank)
+    client.setup_training_problem(coords, data_stats)
     comm.Barrier()
     if rank==0:
         print('Setup metadata for ML problem \n', flush=True)
@@ -82,12 +80,12 @@ def main():
             args.train_interval = int(args.train_interval*1.2)
         if (step%args.train_interval==0):
             # Check if model exists to perform inference
-            exists = client.model_exists(comm, args.model)
+            exists = client.model_exists(comm)
             if exists:
                 if (args.problem_size=="debug" or args.problem_size=="small"):
                     inputs = train_array[:,0]
                     outputs = train_array[:,1]
-                error = client.infer_model(comm, args.model, inputs, outputs)
+                error = client.infer_model(comm, inputs, outputs)
                 if (rank==0):
                     print(f"\tPerformed inference with error={error:>8e}", flush=True)
                 if error <= args.tolerance:
@@ -110,9 +108,10 @@ def main():
 
             # Exit if model has converged to tolerence for 5 consecutive checks
             if success>=5: 
+                client.stop_train()
                 if rank==0:
-                    print("\nModel has converged to tolerence for 5 consecutive checks\n", flush=True)
-                client.stop_train(comm)
+                    print("\nModel has converged to tolerence for 5 consecutive checks", flush=True)
+                    print("Told training to quit", flush=True)
                 break
 
     toc_loop = perf_counter()
@@ -125,10 +124,9 @@ def main():
         print("\nTraining is done too", flush=True)
 
     # Accumulate timing data for client and print summary
-    if rank==0:
-        print("\nSummary of timing data:", flush=True)
     client.collect_stats(comm, mpi_ops)
-    if (rank==0):
+    if rank==0:
+        print("\nSummary of client timing data:", flush=True)
         client.print_stats()
 
     # Print FOM
