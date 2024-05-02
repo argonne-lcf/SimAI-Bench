@@ -19,7 +19,7 @@ from online_training.train.offline_train import offlineTrainLoop
 from online_training.train import models
 from online_training.train.time_prof import timeStats
 from online_training.train import utils
-from online_training.backends.smartredis import SmartRedis_Train_Client
+import online_training.backends as client_backends
 
 ## Main function
 @hydra.main(version_base=None, config_path="./conf", config_name="train_config")
@@ -80,7 +80,9 @@ def main(cfg: DictConfig):
     client = None
     if cfg.online.backend:
         if cfg.online.backend=='smartredis':
-            client = SmartRedis_Train_Client(cfg, comm.rank, comm.size)
+            client = client_backends.smartredis.SmartRedis_Train_Client(cfg, comm.rank, comm.size)
+        elif cfg.online.backend=='dragon':
+            client = client_backends.dragon.Dragon_Train_Client(cfg, comm.rank, comm.size)
         client.init()
         comm.comm.Barrier()
         if comm.rank == 0:

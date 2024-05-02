@@ -10,7 +10,7 @@ mpi_ops = {
         "max": MPI.MAXLOC
     }
 
-from online_training.backends.smartredis import SmartRedis_Sim_Client
+import online_training.backends as client_backends
 from online_training.data_producers import utils
 
 # Main data producer function
@@ -30,6 +30,7 @@ def main():
     # Parse arguments
     parser = ArgumentParser(description='SmartRedis Data Producer')
     parser.add_argument('--backend', default="smartredis", type=str, help='Backend for client (smartredis)')
+    parser.add_argument('--dictionary', default="", type=str, help='Serialized Dragon Dictionary')
     parser.add_argument('--model', default="mlp", type=str, help='ML model identifier (mlp, quadconv, gnn)')
     parser.add_argument('--problem_size', default="debug", type=str, help='Size of problem to emulate (debug)')
     parser.add_argument('--tolerance', default=0.01, type=float, help='ML model convergence tolerance')
@@ -50,7 +51,9 @@ def main():
 
     # Initialize client
     if args.backend=='smartredis':
-        client = SmartRedis_Sim_Client(args, rank, size)
+        client = client_backends.smartredis.SmartRedis_Sim_Client(args, rank, size)
+    elif args.backend=='dragon':
+        client = client_backends.dragon.Dragon_Sim_Client(args, rank, size)
     client.init_client()
     comm.Barrier()
     if rank==0:
