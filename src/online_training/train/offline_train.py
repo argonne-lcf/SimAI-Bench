@@ -20,7 +20,7 @@ from .utils import metric_average
 
 ### Train the model
 def train(comm, model, train_loader, optimizer, scaler, mixed_dtype, 
-          epoch, t_data, cfg):
+          epoch, t_data, cfg, logger):
     model.train()
     num_batches = len(train_loader)
     running_loss = torch.tensor([0.0],device=torch.device(cfg.device))
@@ -54,10 +54,10 @@ def train(comm, model, train_loader, optimizer, scaler, mixed_dtype,
             running_loss += loss
 
             # Print data for some ranks only
-            if (cfg.logging=='debug' and comm.rank==0 and (batch_idx)%10==0):
-                print(f'{comm.rank}: Train Epoch: {epoch+1} | ' + \
+            if (comm.rank==0 and (batch_idx)%10==0):
+                logger.debug(f'{comm.rank}: Train Epoch: {epoch+1} | ' + \
                       f'[{batch_idx+1}/{num_batches}] | ' + \
-                      f'Loss: {loss.item():>8e}', flush=True)
+                      f'Loss: {loss.item():>8e}')
 
     running_loss = running_loss.item() / num_batches
     return running_loss, t_data
@@ -67,7 +67,7 @@ def train(comm, model, train_loader, optimizer, scaler, mixed_dtype,
 ### ================================================ ###
 
 ### Validate the model
-def validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
+def validate(comm, model, val_loader, mixed_dtype, epoch, cfg, logger):
 
     model.eval()
     num_batches = len(val_loader)
@@ -88,11 +88,10 @@ def validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
             running_loss += loss
                 
             # Print data for some ranks only
-            if (cfg.logging=='debug' and comm.rank==0 and (batch_idx)%50==0):
-                print(f'{comm.rank}: Validation Epoch: {epoch+1} | ' + \
+            if (comm.rank==0 and (batch_idx)%50==0):
+                logger.debug(f'{comm.rank}: Validation Epoch: {epoch+1} | ' + \
                         f'[{batch_idx+1}/{num_batches}] | ' + \
                         f'Accuracy: {acc.item():>8e} | Loss {loss.item():>8e}')
-                sys.stdout.flush()
 
     running_acc = running_acc.item() / num_batches
     running_loss = running_loss.item() / num_batches
@@ -109,7 +108,7 @@ def validate(comm, model, val_loader, mixed_dtype, epoch, cfg):
 ### ================================================ ###
 
 ### Test the model
-def test(comm, model, test_loader, mixed_dtype, cfg):
+def test(comm, model, test_loader, mixed_dtype, cfg, logger):
 
     model.eval()
     num_batches = len(test_loader)
@@ -130,10 +129,10 @@ def test(comm, model, test_loader, mixed_dtype, cfg):
             running_loss += loss
                 
             # Print data for some ranks only
-            if (cfg.logging=='debug' and comm.rank==0 and (batch_idx)%50==0):
-                print(f'{comm.rank}: Testing | ' + \
+            if (comm.rank==0 and (batch_idx)%50==0):
+                logger.debug(f'{comm.rank}: Testing | ' + \
                         f'[{batch_idx+1}/{num_batches}] | ' + \
-                        f'Accuracy: {acc.cpu().tolist()} | Loss {loss.item():>8e}', flush=True)
+                        f'Accuracy: {acc.cpu().tolist()} | Loss {loss.item():>8e}')
 
     running_acc = running_acc.cpu().numpy() / num_batches
     running_loss = running_loss.item() / num_batches
@@ -150,7 +149,7 @@ def test(comm, model, test_loader, mixed_dtype, cfg):
 ### ================================================ ###
 
 ### Main online training loop driver
-def offlineTrainLoop(cfg, comm, t_data, model, data):
+def offlineTrainLoop(cfg, comm, t_data, model, data, logger):
     """
     Set up and execute the loop over epochs for offline learning
     """
@@ -182,7 +181,7 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
     #    data = data.to(cfg.device)
 
     # Prepare training and validation data loaders
-    loaders = model.setup_dataloaders(data, cfg, comm)
+    loaders = model.setup_dataloaders(data, cfg, comm, logger)
     train_loader = loaders["train"]["loader"]
     train_sampler = loaders["train"]["sampler"]
     nTrain = loaders["train"]["samples"]
@@ -198,18 +197,17 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
     elif (cfg.optimizer == "RAdam"):
         optimizer = optim.RAdam(model.parameters(), lr=cfg.learning_rate*comm.size)
     else:
-        print("ERROR: optimizer not implemented at the moment")
+        logger.error(f"Optimizer {cfg.optimizer} not implemented at the moment")
     if (cfg.scheduler == "Plateau"):
-        if (comm.rank==0): print("Applying plateau scheduler\n")
+        if (comm.rank==0): logger.info("Applying plateau scheduler\n")
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=500, factor=0.5)
 
     # Loop over epochs
     for epoch in range(cfg.epochs):
         tic_l = perf_counter()
         if (comm.rank == 0):
-            print(f"\n Epoch {epoch+1} of {cfg.epochs}")
-            print("-------------------------------")
-            sys.stdout.flush()
+            logger.info(f"\n Epoch {epoch+1} of {cfg.epochs}")
+            logger.info("-------------------------------")
 
         # Train
         if train_sampler:
@@ -217,11 +215,11 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
         tic_t = perf_counter()
         loss, t_data = train(comm, model, train_loader, 
                              optimizer, scaler, mixed_dtype,
-                             epoch, t_data, cfg)
+                             epoch, t_data, cfg, logger)
         global_loss = metric_average(comm, loss)
         toc_t = perf_counter()
         if comm.rank == 0: 
-            print(f"Training set: | Epoch: {epoch+1} | Average loss: {global_loss:>8e}", flush=True)
+            logger.info(f"Training set: | Epoch: {epoch+1} | Average loss: {global_loss:>8e}")
         if (epoch>0):
             t_data.t_train = t_data.t_train + (toc_t - tic_t)
             t_data.tp_train = t_data.tp_train + nTrain/(toc_t - tic_t)
@@ -232,12 +230,13 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
             tic_v = perf_counter()
             val_acc, val_loss, valData = validate(comm, model, 
                                                   val_loader, 
-                                                  mixed_dtype, epoch, cfg)
+                                                  mixed_dtype, epoch, 
+                                                  cfg, logger)
             global_val_acc = metric_average(comm, val_acc)
             global_val_loss = metric_average(comm, val_loss)
             toc_v = perf_counter()
             if comm.rank == 0:
-                print(f"Validation set: | Epoch: {epoch+1} | Average accuracy: {global_val_acc:>8e} | Average Loss: {global_val_loss:>8e}")
+                logger.info(f"Validation set: | Epoch: {epoch+1} | Average accuracy: {global_val_acc:>8e} | Average Loss: {global_val_loss:>8e}")
             if (epoch>0):
                 t_data.t_val = t_data.t_val + (toc_v - tic_v)
                 t_data.tp_val = t_data.tp_val + nVal/(toc_v - tic_v)
@@ -261,13 +260,13 @@ def offlineTrainLoop(cfg, comm, t_data, model, data):
         # Check if tolerance on loss is satisfied
         if (global_val_loss <= cfg.tolerance):
             if (comm.rank == 0):
-                print("\nConvergence tolerance met. Stopping training loop. \n")
+                logger.info("\nConvergence tolerance met. Stopping training loop. \n")
             break
         
         # Check if max number of epochs is reached
         if (epoch >= cfg.epochs-1):
             if (comm.rank == 0):
-                print("\nMax number of epochs reached. Stopping training loop. \n")
+                logger.info("\nMax number of epochs reached. Stopping training loop. \n")
             break
 
     return model, valData

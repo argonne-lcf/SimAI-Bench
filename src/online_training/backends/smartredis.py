@@ -2,6 +2,7 @@ import sys
 import os, os.path
 from typing import Optional
 from time import perf_counter
+import logging
 import numpy as np
 import torch
 try:
@@ -122,8 +123,6 @@ class SmartRedis_Sim_Client:
             key = 'x.'+str(self.rank)
         else:
             key = 'x.'+str(self.rank)+'.'+str(step)
-        if (self.rank==0):
-            print(f'\tSending training data with key {key} and shape {array.shape}', flush=True)
         tic = perf_counter()
         self.client.put_tensor(key, array)
         toc = perf_counter()
@@ -240,7 +239,7 @@ class SmartRedis_Sim_Client:
             self.time_stats[key] = stats
 
     # Print timing statistics
-    def print_stats(self):
+    def print_stats(self, logger: logging.Logger):
         """Print timing statistics
         """
         for _, (key, val) in enumerate(self.time_stats.items()):
@@ -248,7 +247,7 @@ class SmartRedis_Sim_Client:
                            f"max = {val['max'][0]:>8e} , " + \
                            f"avg = {val['avg']:>8e} , " + \
                            f"std = {val['std']:>8e} "
-            print(f"SmartRedis {key} [s] " + stats_string)
+            logger.info(f"SmartRedis {key} [s] " + stats_string)
 
 
 ##########################################################
@@ -349,8 +348,6 @@ class SmartRedis_Train_Client:
 
     # Read the size information from DB
     def read_sizeInfo(self):
-        if (self.rank == 0):
-            print("\nGetting size info from DB ...", flush=True)
         while True:
             if (self.key_exists("sizeInfo")):
                 dataSizeInfo = self.get_array('sizeInfo','meta')
@@ -371,15 +368,6 @@ class SmartRedis_Train_Client:
                 self.tensor_batch = max_batch_size
             else:
                 self.tensor_batch = self.batch
-
-        if (self.rank == 0):
-            print(f"Samples per simulation tensor: {self.npts}")
-            print(f"Model input features: {self.ndIn}")
-            print(f"Model output targets: {self.ndOut}")
-            print(f"Total tensors in all DB: {self.num_tot_tensors}")
-            print(f"Tensors in local DB: {self.num_db_tensors}")
-            print(f"Simulation tensors per batch: {self.tensor_batch}")
-            sys.stdout.flush()
 
     # Read the flag determining if data is overwritten in DB
     def read_overwrite(self):
@@ -443,7 +431,7 @@ class SmartRedis_Train_Client:
             self.time_stats[key] = stats
 
     # Print timing statistics
-    def print_stats(self):
+    def print_stats(self, logger: logging.Logger):
         """Print timing statistics
         """
         for _, (key, val) in enumerate(self.time_stats.items()):
@@ -451,4 +439,4 @@ class SmartRedis_Train_Client:
                            f"max = {val['max'][0]:>8e} , " + \
                            f"avg = {val['avg']:>8e} , " + \
                            f"std = {val['std']:>8e} "
-            print(f"SmartRedis {key} [s] " + stats_string)
+            logger.info(f"SmartRedis {key} [s] " + stats_string)

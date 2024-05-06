@@ -1,5 +1,7 @@
 from argparse import ArgumentParser
 from time import perf_counter, sleep, time
+from datetime import datetime
+import logging
 
 import mpi4py
 mpi4py.rc.initialize = False
@@ -34,19 +36,31 @@ def main():
     parser.add_argument('--problem_size', default="debug", type=str, help='Size of problem to emulate (debug)')
     parser.add_argument('--tolerance', default=0.01, type=float, help='ML model convergence tolerance')
     parser.add_argument('--ppn', default=4, type=int, help='Number of processes per node')
-    parser.add_argument('--logging', default='no', help='Level of performance logging (no, verbose)')
+    parser.add_argument('--logging', default='debug', help='Level of performance logging (debug, info)')
     parser.add_argument('--train_interval', type=int, default=5, help='Time step interval used to sync with ML training')
     parser.add_argument('--db_launch', default="colocated", type=str, help='Database deployment (colocated, clustered)')
     parser.add_argument('--db_nodes', default=1, type=int, help='Number of database nodes')
     parser.add_argument('--db_max_mem_size', default=1, type=float, help='Maximum size of DB in GB')
     args = parser.parse_args()
+    
+    # Set up logging
+    log_level = getattr(logging, args.logging.upper())
+    logger = logging.getLogger(f'[{rank}]')                                
+    logger.setLevel(log_level)
+    date = datetime.now().strftime('%d.%m.%y_%H.%M') if rank==0 else None
+    date = comm.bcast(date, root=0)
+    comm.Barrier()
+    mh = utils.MPIFileHandler(f"sim_{date}.log")                                        
+    #formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
+    formatter = logging.Formatter('%(message)s')
+    mh.setFormatter(formatter)
+    logger.addHandler(mh)
 
     rankl = rank % args.ppn
-    if rank==0 and args.logging=="verbose":
-        print(f"Hello from MPI rank {rank}/{size}, local rank {rankl} and node {name}\n")
+    logger.debug(f"Hello from MPI rank {rank}/{size}, local rank {rankl} and node {name}")
     if rank==0:
-        print(f'Running with {args.db_nodes} DB nodes', flush=True)
-        print(f'and with {args.ppn} processes per node \n', flush=True)
+        logger.info(f'Running with {args.db_nodes} DB nodes')
+        logger.info(f'and with {args.ppn} processes per node \n')
 
     # Initialize client
     if args.backend=='smartredis':
@@ -54,7 +68,7 @@ def main():
     client.init_client()
     comm.Barrier()
     if rank==0:
-        print(f'All {args.backend} clients initialized \n', flush=True)
+        logger.info(f'All {args.backend} clients initialized \n')
 
     # Generate synthetic data for the specific model
     train_array, coords, data_stats = utils.generate_training_data(args, (rank, size))
@@ -63,7 +77,7 @@ def main():
     client.setup_training_problem(coords, data_stats)
     comm.Barrier()
     if rank==0:
-        print('Setup metadata for ML problem \n', flush=True)
+        logger.info('Setup metadata for ML problem \n')
 
     # Emulate integration of PDEs with a do loop
     numts = 1000
@@ -72,7 +86,7 @@ def main():
     for step in range(numts):
         # Sleep for a while to emulate the time required by PDE integration
         if rank==0:
-            print(f"{step} \t {time()-t_start:>.2E}", flush=True)
+            logger.info(f"{step} \t {time()-t_start:>.2E}")
         sleep(0.5)
         train_array, _, _ = utils.generate_training_data(args, (rank,size), step)
 
@@ -87,7 +101,7 @@ def main():
                     outputs = train_array[:,1]
                 error = client.infer_model(comm, inputs, outputs)
                 if (rank==0):
-                    print(f"\tPerformed inference with error={error:>8e}", flush=True)
+                    logger.info(f"\tPerformed inference with error={error:>8e}")
                 if error <= args.tolerance:
                     success += 1
                 else:
@@ -97,21 +111,23 @@ def main():
             local_free_mem = 1 if client.check_db_mem(train_array) else 0
             global_free_mem = comm.allreduce(local_free_mem)
             if global_free_mem==size:
+                if (rank==0):
+                    logger.info(f'\tSending training data with shape {train_array.shape}')
                 client.send_snapshot(train_array, step)
                 comm.Barrier()
                 if (rank==0):
-                    print(f'\tAll ranks finished sending training data', flush=True)
+                    logger.info(f'\tAll ranks finished sending training data')
                 client.send_step(step)
             else:
                 if (rank==0):
-                    print(f'\tOut of memory in DB, did not send training data', flush=True)
+                    logger.warning(f'\tOut of memory in DB, did not send training data')
 
             # Exit if model has converged to tolerence for 5 consecutive checks
             if success>=5: 
                 client.stop_train()
                 if rank==0:
-                    print("\nModel has converged to tolerence for 5 consecutive checks", flush=True)
-                    print("Told training to quit", flush=True)
+                    logger.info("\nModel has converged to tolerence for 5 consecutive checks")
+                    logger.info("Told training to quit")
                 break
 
     toc_loop = perf_counter()
@@ -121,20 +137,21 @@ def main():
     client.check_train_status()
     comm.Barrier()
     if rank==0:
-        print("\nTraining is done too", flush=True)
+        logger.info("\nTraining is done too")
 
     # Accumulate timing data for client and print summary
     client.collect_stats(comm, mpi_ops)
     if rank==0:
-        print("\nSummary of client timing data:", flush=True)
-        client.print_stats()
+        logger.info("\nSummary of client timing data:")
+        client.print_stats(logger)
 
     # Print FOM
     train_array_sz = train_array.itemsize * train_array.size / 1024 / 1024 / 1024
     if rank==0:
-        print("\nFOM:")
-        utils.print_fom(time_to_solution, train_array_sz, client.time_stats)
+        logger.info("\nFOM:")
+        utils.print_fom(logger, time_to_solution, train_array_sz, client.time_stats)
 
+    mh.close()
     MPI.Finalize()
 
 if __name__ == "__main__":
