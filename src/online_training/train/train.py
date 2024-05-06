@@ -7,6 +7,7 @@ import numpy as np
 from time import perf_counter
 import random
 import datetime
+import logging
 
 # Import ML libraries
 import torch
@@ -26,19 +27,33 @@ from online_training.backends.smartredis import SmartRedis_Train_Client
 def main(cfg: DictConfig):
     
     # Import and init MPI
-    print_hello = True if cfg.logging=='debug' else False
     comm = utils.MPI_COMM()
-    comm.init(cfg, print_hello=print_hello)
+    comm.init(cfg)
+
+    # Set up logging
+    log_level = getattr(logging, cfg.logging.upper())
+    logger = logging.getLogger(f'[{comm.rank}]')                                
+    logger.setLevel(log_level)
+    date = datetime.datetime.now().strftime('%d.%m.%y_%H.%M') if comm.rank==0 else None
+    date = comm.comm.bcast(date, root=0)
+    comm.comm.Barrier()
+    mh = utils.MPIFileHandler(f"train_{date}.log")                                        
+    #formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
+    formatter = logging.Formatter('%(levelname)s:%(message)s')
+    mh.setFormatter(formatter)
+    logger.addHandler(mh)
+    
+    logger.debug(f"Hello from MPI rank {comm.rank}/{comm.size} and local rank {comm.rankl}")
 
     # Intel imports
     try:
         import intel_extension_for_pytorch
     except ModuleNotFoundError as err:
-        if comm.rank==0: print(err)
+        if comm.rank==0: logger.warning(err)
     try:
         import oneccl_bindings_for_pytorch
     except ModuleNotFoundError as err:
-        if comm.rank==0: print(err)
+        if comm.rank==0: logger.warning(err)
 
     # Initialize Torch Distributed
     os.environ['RANK'] = str(comm.rank)
@@ -84,11 +99,22 @@ def main(cfg: DictConfig):
         client.init()
         comm.comm.Barrier()
         if comm.rank == 0:
-            print(f"\nInitialized all {cfg.online.backend} clients\n", flush=True)
+            logger.info(f"Initialized all {cfg.online.backend} clients\n")
+            logger.info("Getting size info from simulation ...")
         client.setup_problem()
+        if comm.rank == 0:
+            logger.info(f"Samples per simulation tensor: {client.npts}")
+            logger.info(f"Model input features: {client.ndIn}")
+            logger.info(f"Model output targets: {client.ndOut}")
+            logger.info(f"Total tensors in all DB: {client.num_tot_tensors}")
+            logger.info(f"Tensors in local DB: {client.num_db_tensors}")
+            logger.info(f"Simulation tensors per batch: {client.tensor_batch}")
 
     # Instantiate the model and get the training data
     model, data = models.load_model(cfg, comm, client, rng)
+    n_params = utils.count_weights(model)
+    if (comm.rank == 0):
+        logger.info(f"Loaded {cfg.model} model with {n_params} trainable parameters \n")
     
     # Set device to run on and offload model
     device = torch.device(cfg.device)
@@ -98,11 +124,9 @@ def main(cfg: DictConfig):
             cuda_id = comm.rankl//cfg.ppd if torch.cuda.device_count()>1 else 0
             assert cuda_id>=0 and cuda_id<torch.cuda.device_count(), \
                    f"Assert failed: cuda_id={cuda_id} and {torch.cuda.device_count()} available devices"
-            sys.stdout.flush()
             torch.cuda.set_device(cuda_id)
         else:
-            print(f"[{comm.rank}]: no cuda devices available, cuda.device_count={torch.cuda.device_count()}")
-            sys.stdout.flush()
+            logger.warning(f"[{comm.rank}]: no cuda devices available, cuda.device_count={torch.cuda.device_count()}")
     elif (cfg.device=='xpu'):
         if torch.xpu.is_available():
             xpu_id = comm.rankl//cfg.ppd if torch.xpu.device_count()>1 else 0
@@ -110,15 +134,15 @@ def main(cfg: DictConfig):
                    f"Assert failed: xpu_id={xpu_id} and {torch.xpu.device_count()} available devices"
             torch.xpu.set_device(xpu_id)
         else:
-            print(f"[{comm.rank}]: no XPU devices available, xpu.device_count={torch.xpu.device_count()}", flush=True)
+            logger.warning(f"[{comm.rank}]: no XPU devices available, xpu.device_count={torch.xpu.device_count()}")
     if (cfg.device != 'cpu'):
         model.to(device)
     if (comm.rank == 0):
-        print(f"\nRunning on device: {cfg.device} \n", flush=True)
+        logger.info(f"Running on device: {cfg.device} \n")
 
     # Train model
     if cfg.online.backend:
-        model, sample_data = onlineTrainLoop(cfg, comm, client, t_data, model)
+        model, sample_data = onlineTrainLoop(cfg, comm, client, t_data, model, logger)
     else:
         model, sample_data = offlineTrainLoop(cfg, comm, t_data, model, data)
 
@@ -128,26 +152,27 @@ def main(cfg: DictConfig):
     if (comm.rank == 0):
         model.eval()
         model.save_checkpoint(cfg.name, sample_data)
-        print("\nSaved model to disk\n")
+        logger.info("Saved model to disk\n")
 
     # Collect timing statistics for training
     if (t_data.i_train>0):
         if (comm.rank==0):
-            print("\nTiming data:", flush=True)
-        t_data.printTimeData(comm)
+            logger.info("Timing data:")
+        t_data.printTimeData(comm, logger)
 
     # Accumulate timing data for client and print summary
     client.collect_stats(comm)
     if comm.rank==0:
-        print("\nSummary of client timing data:", flush=True)
-        client.print_stats()
+        logger.info("Summary of client timing data:")
+        client.print_stats(logger)
 
     # Print FOM
     train_array_sz = client.train_array_sz / 1024 / 1024 / 1024
     if comm.rank==0:
-        print("\nFOM:")
-        utils.print_fom(t_data.t_tot, train_array_sz, client.time_stats)
+        logger.info("FOM:")
+        utils.print_fom(logger, t_data.t_tot, train_array_sz, client.time_stats)
 
+    mh.close()
     comm.finalize()
 
 
