@@ -1,9 +1,6 @@
 from typing import Tuple, Optional
 import logging
-try:
-    from gmpy2 import is_square
-except ModuleNotFoundError as err:
-    from gmpy import is_square
+from gmpy2 import is_square
 import numpy as np
 import math
 from os.path import abspath
