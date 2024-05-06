@@ -54,7 +54,7 @@ def setup_online_dataloaders(cfg, comm, dataset, batch_size, split: List[float])
     return train_tensor_loader, train_sampler, val_tensor_loader
 
 ### Main online training loop driver
-def onlineTrainLoop(cfg, comm, client, t_data, model):
+def onlineTrainLoop(cfg, comm, client, t_data, model, logger):
     # Setup and variable initialization
     istep = -1 # initialize the simulation step number
     iepoch = 0 # epoch number
@@ -83,9 +83,9 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
     elif (cfg.optimizer == "RAdam"):
         optimizer = optim.RAdam(model.parameters(), lr=cfg.learning_rate*comm.size)
     else:
-        print("ERROR: optimizer implemented at the moment")
+        logger.error(f"Optimizer {cfg.optimizer} not implemented at the moment")
     if (cfg.scheduler == "Plateau"):
-        if (comm.rank==0): print("Applying plateau scheduler\n")
+        if (comm.rank==0): logger.info("Applying plateau scheduler\n")
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=500, factor=0.5)
 
     # Create training and validation Datasets
@@ -94,21 +94,19 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
     num_train_tensors = num_db_tensors - num_val_tensors
     tensor_split = [1-cfg.validation_split, cfg.validation_split]
     if (num_val_tensors==0 and cfg.validation_split>0):
-        if (comm.rank==0): print("Insufficient number of tensors for validation -- skipping it")
+        if (comm.rank==0): logger.warning("Insufficient number of tensors for validation -- skipping it")
     if client.dataOverWr:
         key_dataset = RankDataset(num_db_tensors,client.head_rank,cfg.model,comm.rank)
 
     # While loop that checks when training data is available on database
     if (comm.rank == 0):
-        print("\nWaiting for training data to be populated in DB ...")
-        sys.stdout.flush()
+        logger.info("Waiting for training data to be populated in DB ...")
     while True:
         if client.key_exists("step"):
             step = client.get_value('step')
             break
     if (comm.rank == 0):
-        print("Found data, starting training loop\n")
-        sys.stdout.flush()
+        logger.info("Found data, starting training loop\n")
 
     # Start training loop
     step_list = []
@@ -119,7 +117,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             sim_run = client.get_value('sim-run')
             if (sim_run < 0.5):
                 if (comm.rank == 0):
-                    print("\nSimulation says time to quit training ... \n", flush=True)
+                    logger.info("Simulation says time to quit training ... \n")
                 break
 
         # Get time step number from database
@@ -131,8 +129,8 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             step_list.append(istep)
             update = True
             if (comm.rank == 0):
-                print("\nNew training data was sent to the DB ...")
-                print(f"Working with time step {istep} \n", flush=True)
+                logger.info("New training data was sent to the DB ...")
+                logger.info(f"Working with time step {istep} \n")
             if not client.dataOverWr:
                 client.tensor_batch =  max(1,int(num_db_tensors*len(step_list)/(cfg.ppn*cfg.ppd)))
                 if cfg.model=="gnn": 
@@ -148,8 +146,8 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         
         # Print epoch number
         if (comm.rank == 0):
-            print(f"\n Epoch {iepoch+1}")
-            print("-------------------------------", flush=True)
+            logger.info(f"Epoch {iepoch+1}")
+            logger.info("-------------------------------")
         
         # Perform training step
         if train_sampler is not None: train_sampler.set_epoch(iepoch)
@@ -158,12 +156,12 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
         for _, tensor_keys in enumerate(train_tensor_loader):
             if (cfg.online.global_shuffling or update):
                 train_loader = model.module.online_dataloader(cfg, client, comm,
-                                                              tensor_keys,
+                                                              tensor_keys, logger,
                                                               shuffle=True)
             loss, t_data = train(comm, model, 
                                  train_loader, optimizer, 
                                  scaler, mixed_dtype, iepoch, 
-                                 t_data, cfg)
+                                 t_data, cfg, logger)
             
             running_loss += loss
 
@@ -176,7 +174,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             t_data.tp_train = t_data.tp_train + nTrain/(toc_t - tic_t)
             t_data.i_train = t_data.i_train + 1
         if comm.rank == 0: 
-            print(f"Training set: | Epoch: {iepoch+1} | Average loss: {global_loss:>8e} \n", flush=True)
+            logger.info(f"Training set: | Epoch: {iepoch+1} | Average loss: {global_loss:>8e} \n")
 
         # Perform validation step
         if (num_val_tensors>0):
@@ -185,9 +183,11 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
             tic_v = perf_counter()
             for _, tensor_keys in enumerate(val_tensor_loader):
                 if (cfg.online.global_shuffling or update):
-                    val_loader = model.module.online_dataloader(cfg, client, comm, tensor_keys)
+                    val_loader = model.module.online_dataloader(cfg, client, comm, 
+                                                                tensor_keys, logger)
                 acc, loss, _ = validate(comm, model, val_loader, 
-                                        mixed_dtype, iepoch, cfg)
+                                        mixed_dtype, iepoch, cfg,
+                                        logger)
                 running_loss += loss
                 running_acc += acc
             val_loss = running_loss / len(val_tensor_loader)
@@ -201,7 +201,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                 t_data.tp_val = t_data.tp_val + nVal/(toc_v - tic_v)
                 t_data.i_val = t_data.i_val + 1
             if comm.rank == 0: 
-                print(f"Validation set: | Epoch: {iepoch+1} | Average accuracy: {global_val_acc:>8e} | Average Loss: {global_val_loss:>8e}") 
+                logger.info(f"Validation set: | Epoch: {iepoch+1} | Average accuracy: {global_val_acc:>8e} | Average Loss: {global_val_loss:>8e}") 
 
         # Share model checkpoint
         if ((iepoch+1)%cfg.online.checkpoints==0):
@@ -220,7 +220,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model):
                     client.put_model(cfg.model, model_bytes,
                                      device=cfg.online.smartredis.inference_device)
             if (comm.rank==0):
-                print("\nShared model checkpoint", flush=True)
+                logger.info("Shared model checkpoint")
 
         iepoch = iepoch + 1 
 

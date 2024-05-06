@@ -33,7 +33,7 @@ class timeStats:
         except:
             min_loc = [-1, -1]
             max_loc = [-1, -1]
-            comm.Barrier()
+            #comm.comm.Barrier()
         return avg, std, summ, [min_loc[0],min_loc[1]], [max_loc[0],max_loc[1]]
 
     # Compute min, max, mean and standard deviation across all processes for a counter
@@ -47,50 +47,50 @@ class timeStats:
         return avg, std
 
     # Print the timing data
-    def printTimeData(self, comm):
+    def printTimeData(self, comm, logger):
         # General training metrics
         avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_tot)
         if comm.rank==0:
             stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}"
             #stats_string_2 = f": min [{min_arr[0]:>8e},{min_arr[1]:>d}], max [{max_arr[0]:>8e},{max_arr[1]:>d}], avg [{avg:>8e},.], std [{std:>8e},.]"
-            print("Total training time [s] " + stats_string )
+            logger.info("Total training time [s] " + stats_string )
         
         avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_train)
         if comm.rank==0:
             stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}"
-            print("Total time spent in training loop [s] " + stats_string)
+            logger.info("Total time spent in training loop [s] " + stats_string)
         avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.tp_train/self.i_train)
         if comm.rank==0:
             stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"
-            print("Total training throughput [samples/s] " + stats_string)
+            logger.info("Total training throughput [samples/s] " + stats_string)
         avg, std = self.computeStats_i(comm, self.i_train)
         if comm.rank==0:
-            print(f"Number of train loops executed : {int(avg)}")
+            logger.info(f"Number of train loops executed : {int(avg)}")
         
         avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_compMiniBatch)
         if comm.rank==0:
             stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}"
-            print(f"Total time spent in batch computation [s] " + stats_string)
+            logger.info(f"Total time spent in batch computation [s] " + stats_string)
         avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_AveCompMiniBatch)
         if comm.rank==0:
             stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}"
-            print(f"Average time for a single batch computation [s] " + stats_string)
+            logger.info(f"Average time for a single batch computation [s] " + stats_string)
         avg, std = self.computeStats_i(comm, self.i_compMiniBatch)
         if comm.rank==0:
-            print(f"Number of batches computed : {int(avg)}")
+            logger.info(f"Number of batches computed : {int(avg)}")
 
         avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.t_val)
         if comm.rank==0:
             stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}"
-            print(f"Total time spent in validation loop [s] " + stats_string)
+            logger.info(f"Total time spent in validation loop [s] " + stats_string)
         if (self.i_val>0):
             avg, std, summ, min_arr, max_arr = self.computeStats_f(comm, self.tp_val/self.i_val)
             if comm.rank==0:
                 stats_string = f": min = {min_arr[0]:>8e} , max = {max_arr[0]:>8e} , avg = {avg:>8e} , std = {std:>8e}, sum = {summ:>8e}"
-                print(f"Total validation throughput [samples/s] " + stats_string)
+                logger.info(f"Total validation throughput [samples/s] " + stats_string)
         avg, std = self.computeStats_i(comm, self.i_val)
         if comm.rank==0:
-            print(f"Number of validation loops executed : {int(avg)}")
+            logger.info(f"Number of validation loops executed : {int(avg)}")
 
     
         

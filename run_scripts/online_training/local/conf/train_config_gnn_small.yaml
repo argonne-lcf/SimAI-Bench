@@ -1,7 +1,7 @@
 # General run config
 ppn: 1 # integer - number of MPI processes per node for ML training
 ppd: 1 # integer - number of MPI processes per device for ML training
-logging: "debug" # no, debug, verbose-perf - type of logging desired
+logging: "debug" # debug,info - type of logging desired
 device: "cpu" # cpu, cuda, xpu - device to train on
 model: "gnn" # mlp, gnn - model descriptor
 data_path: "" # string, synthetic - path to training data to load

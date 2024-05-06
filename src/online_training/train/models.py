@@ -8,7 +8,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import numpy as np
-from utils import count_weights
 
 from .mlp.model import MLP
 from .gnn.model import GNN
@@ -31,10 +30,6 @@ def load_model(cfg: DictConfig, comm, client, rng) -> Tuple[nn.Module, np.ndarra
     elif (cfg.model=="gnn"):
         model = GNN(cfg)
         model.setup_local_graph(client, comm.rank)
-
-    n_params = count_weights(model)
-    if (comm.rank == 0):
-        print(f"\nLoaded {cfg.model} model with {n_params} trainable parameters \n")
 
     # Load/Generate training data
     if not cfg.online.backend:

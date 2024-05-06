@@ -165,7 +165,7 @@ class MLP(nn.Module):
                               (self.max_val[i] - self.min_val[i])
         return data
     
-    def setup_dataloaders(self, data: np.ndarray, cfg, comm) -> dict:
+    def setup_dataloaders(self, data: np.ndarray, cfg, comm, logger) -> dict:
         """
         Prepare the training and validation data loaders 
 
@@ -179,7 +179,7 @@ class MLP(nn.Module):
         nVal = m.floor(samples*cfg.validation_split)
         nTrain = samples-nVal
         if (nVal==0 and cfg.validation_split>0):
-            if (comm.rank==0): print("Insufficient number of samples for validation -- skipping it")
+            if (comm.rank==0): logger.warning("Insufficient number of samples for validation -- skipping it")
         dataset = MiniBatchDataset(data)
         trainDataset, valDataset = random_split(dataset, [nTrain, nVal])
 
@@ -254,13 +254,12 @@ class MLP(nn.Module):
                           (self.max_val[i] - self.min_val[i])
         return data
 
-    def online_dataloader(self, cfg, client, comm, keys: list, shuffle: Optional[bool] = False) \
+    def online_dataloader(self, cfg, client, comm, keys: list, logger, shuffle: Optional[bool] = False) \
                         -> Tuple[torch.utils.data.DataLoader, float]:
         """
         Load data from database and create on-rank data loader
         """
-        if (cfg.logging=='debug'):
-            print(f'[{comm.rank}]: Grabbing tensors with key {keys}', flush=True)
+        logger.debug(f'[{comm.rank}]: Grabbing tensors with key {keys}')
         
         if (cfg.precision == "fp32" or cfg.precision == "tf32"):
             dtype = torch.float32
