@@ -3,7 +3,7 @@ import logging
 from gmpy2 import is_square
 import numpy as np
 import math
-from os.path import abspath
+import os
 
 import mpi4py
 mpi4py.rc.initialize = False
@@ -96,7 +96,7 @@ class MPIFileHandler(logging.FileHandler):
                  encoding='utf-8',  
                  delay=False,
                  comm=MPI.COMM_WORLD ):                                                
-        self.baseFilename = abspath(filename)                           
+        self.baseFilename = os.path.abspath('/'.join([os.getcwd(), filename]))                        
         self.mode = mode                                                        
         self.encoding = encoding                                            
         self.comm = comm                                                        

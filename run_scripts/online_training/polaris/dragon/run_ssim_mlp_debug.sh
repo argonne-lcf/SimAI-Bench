@@ -1,13 +1,10 @@
 #!/bin/bash
 
 # Set env
-#module load conda/2023-10-04
+#module use /soft/modulefiles
+#module load conda/2024-04-29
 #conda activate
-#source /eagle/datascience/balin/Polaris/SmartSim_envs/venv_conda-2023-10-04/_ssim_env_24_4/bin/activate
-module use /soft/modulefiles
-module load conda/2024-04-25
-conda activate
-source /eagle/datascience/balin/Polaris/SmartSim_envs/venv_conda-2024-04-25/_ssim_env/bin/activate
+#source /eagle/datascience/balin/SimAI-Bench/venv/dragon-0.9/_dragon_env/bin/activate
 export MPICH_GPU_SUPPORT_ENABLED=0
 echo Loaded modules:
 module list
@@ -38,8 +35,8 @@ echo
 # Sent env vars
 
 # Run
-SIM_ARGS="--backend\=dragon --model\=mlp --problem_size\=debug --db_launch\=colocated --ppn\=${SIM_RANKS}  --tolerance\=0.002"
-python $DRIVER --config-path $DRIVER_CONFIG_PATH \
+SIM_ARGS="--backend\=dragon --model\=mlp --problem_size\=debug --launch\=colocated --ppn\=${SIM_RANKS} --tolerance\=0.002"
+dragon $DRIVER --config-path $DRIVER_CONFIG_PATH \
     deployment="colocated" \
     sim.executable=$SIM_EXE sim.arguments="${SIM_ARGS}" \
     sim.procs=${SIM_RANKS} sim.procs_pn=${SIM_PROCS_PER_NODE} \

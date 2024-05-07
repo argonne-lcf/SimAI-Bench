@@ -2,7 +2,7 @@
 ##### This script contains general utilities that can be useful
 ##### to many training applications and driver scripts 
 #####
-
+import os
 from os.path import exists, abspath
 import sys
 import numpy as np
@@ -90,7 +90,7 @@ class MPIFileHandler(logging.FileHandler):
                  encoding='utf-8',  
                  delay=False,
                  comm=MPI.COMM_WORLD ):                                                
-        self.baseFilename = abspath(filename)                           
+        self.baseFilename = abspath('/'.join([os.getcwd(),filename]))                           
         self.mode = mode                                                        
         self.encoding = encoding                                            
         self.comm = comm                                                        

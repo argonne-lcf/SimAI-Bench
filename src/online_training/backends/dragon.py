@@ -11,20 +11,21 @@ except:
     pass
 
 import dragon
-from dragon.data.distdictionary.dragon_dict import DragonDict
+from dragon.data.ddict.ddict import DDict
+#from dragon.data.distdictionary.dragon_dict import DragonDict
 
 # Dragon Client Class for the Simulation (Data Producer)
 class Dragon_Sim_Client:
     def __init__(self, args, rank: int, size: int):
-        self._dd = args.dictionary
-        self.dd_launch = args.db_launch
-        self.dd_nodes = args.db_nodes
+        self._dd_serialized = args.dictionary
+        self.dd_launch = args.launch
         self.rank = rank
         self.size = size
         self.ppn = args.ppn
         self.ow = True if args.problem_size=="debug" else False
         self.max_mem = args.db_max_mem_size*1024*1024*1024
         self.model = args.model
+        self._dd = None
 
         self.times = {
             "init": 0.,
@@ -36,10 +37,9 @@ class Dragon_Sim_Client:
         }
         self.time_stats = {}
 
-        if (self.db_launch == "colocated"):
-            self.db_nodes = 1
+        if (self.dd_launch == "colocated"):
             self.head_rank = self.ppn * self.rank/self.ppn
-        elif (self.db_launch == "clustered"):
+        elif (self.dd_launch == "clustered"):
             self.ppn = size
             self.head_rank = 0
 
@@ -50,7 +50,7 @@ class Dragon_Sim_Client:
     # Initialize client
     def init_client(self):
         tic = perf_counter()
-        self._dd = self._dd.attach()
+        self._dd = DDict.attach(self._dd_serialized)
         toc = perf_counter()
         self.times["init"] = toc - tic
 
@@ -142,7 +142,7 @@ class Dragon_Sim_Client:
         self.times["train"].append(toc - tic)
 
     # Check DB memory
-    def check_db_mem(self, array: np.ndarray) -> bool:
+    def check_mem(self, array: np.ndarray) -> bool:
         #tic = perf_counter()
         #db_info=self.client.get_db_node_info([self.db_address])[0]
         #toc = perf_counter()
@@ -256,23 +256,22 @@ class Dragon_Sim_Client:
 
 # Dragon Client Class for Training
 class Dragon_Train_Client:
-    def __init__(self, dd: DragonDict, cfg, rank: int, size: int):
+    def __init__(self, cfg, rank: int, size: int):
         self.rank = rank
         self.size = size
-        self.dd_launch = cfg.online.smartredis.db_launch
-        self.dd_nodes = cfg.online.smartredis.db_nodes
+        self.dd_launch = cfg.online.dragon.launch
         self.ppn = cfg.ppn
         self.ppd = cfg.ppd
         self.global_shuffling = cfg.online.global_shuffling
         self.batch = cfg.online.batch
 
-        self._dd = dd
+        self._dd = cfg.dragon.dictionary
         self.npts = None
         self.ndTot = None
         self.ndIn = None
         self.ndOut = None
         self.num_tot_tensors = None
-        self.num_db_tensors = None
+        self.num_dd_tensors = None
         self.head_rank = None
         self.tensor_batch = None
         self.dataOverWr = None
@@ -351,10 +350,10 @@ class Dragon_Train_Client:
         self.ndIn = dataSizeInfo[2]
         self.ndOut = self.ndTot - self.ndIn
         self.num_tot_tensors = dataSizeInfo[3]
-        self.num_db_tensors = dataSizeInfo[4]
+        self.num_dd_tensors = dataSizeInfo[4]
         self.head_rank = dataSizeInfo[5]
         
-        max_batch_size = int(self.num_db_tensors/(self.ppn*self.ppd))
+        max_batch_size = int(self.num_dd_tensors/(self.ppn*self.ppd))
         if (not self.global_shuffling):
             self.tensor_batch = max_batch_size
         else:
@@ -368,7 +367,7 @@ class Dragon_Train_Client:
             print(f"Model input features: {self.ndIn}")
             print(f"Model output targets: {self.ndOut}")
             print(f"Total tensors in all DB: {self.num_tot_tensors}")
-            print(f"Tensors in local DB: {self.num_db_tensors}")
+            print(f"Tensors in local DB: {self.num_dd_tensors}")
             print(f"Simulation tensors per batch: {self.tensor_batch}")
             sys.stdout.flush()
 

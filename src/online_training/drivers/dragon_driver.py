@@ -6,12 +6,10 @@ import hydra
 
 import multiprocessing as mp
 import dragon
-from dragon.data.distdictionary.dragon_dict import DragonDict
+from dragon.data.ddict.ddict import DDict
+#from dragon.data.distdictionary.dragon_dict import DragonDict
 from dragon.native.process_group import ProcessGroup
-from dragon.native.process import TemplateProcess, MSG_PIPE, MSG_DEVNULL
-
-from online_training.data_producers.sim import main as sim
-from online_training.train.train import main as train
+from dragon.native.process import ProcessTemplate, MSG_PIPE, MSG_DEVNULL
 
 ## Define function to parse node list
 def parseNodeList(scheduler: str) -> List[str]:
@@ -38,14 +36,14 @@ def parseNodeList(scheduler: str) -> List[str]:
 #    sim(dd, sim_args)
 
 ## Colocated launch
-def launch_colocated(cfg: DictConfig, dd: DragonDict, nodelist: List[str]) -> None:
+def launch_colocated(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
     """
     Launch the workflow with the colocated deployment
 
     :param cfg: hydra config
     :type cfg: DictConfig
-    :param dd: Dragon Didtributed Dictionary
-    :type dd: DragonDict
+    :param dd: Dragon Distributed Dictionary
+    :type dd: DDict
     :param nodelist: node list provided by scheduler
     :type nodelist: List[str]
     """
@@ -62,61 +60,74 @@ def launch_colocated(cfg: DictConfig, dd: DragonDict, nodelist: List[str]) -> No
     dd_serialized = dd.serialize()
 
     # Set up and launch the simulation component
-    sim_args = []
+    print('Launching the simulation ...', flush=True)
+    sim_args_list = []
     if (cfg.sim.executable.split("/")[-1].split('.')[-1]=='py'):
         sim_exe = sys.executable
-        sim_args.append(cfg.sim.executable.split("/")[-1])
-    sim_args.append(cfg.sim.arguments)
-    sim_args.append(f' --dictionary={dd_serialized}')
-    sim_run_dir = '/'.join(cfg.sim.executable.split("/")[:-1])
+        sim_args_list.append(cfg.sim.executable)
+    sim_args_list.extend(cfg.sim.arguments.split(' '))
+    #sim_args = cfg.sim.arguments + f' --dictionary={dd_serialized}'
+    #sim_args = '--backend=dragon --model=mlp --problem_size=debug --db_launch=colocated --ppn=4  --tolerance=0.002' + f' --dictionary={dd_serialized}'
+    #sim_args_list.append(sim_args)
+    sim_args_list.append(f'--dictionary={dd_serialized}')
+    sim_run_dir = os.getcwd()
 
     sim_grp = ProcessGroup(restart=False, pmi_enabled=True)
     sim_grp.add_process(nproc=1, 
-                    template=TemplateProcess(target=sim_exe, 
-                                             args=sim_args, 
+                    template=ProcessTemplate(target=sim_exe, 
+                                             args=sim_args_list, 
+                                             #args=[cfg.sim.executable,'--backend=dragon','--ppn=4'], 
                                              cwd=sim_run_dir, 
                                              stdout=MSG_PIPE))
     sim_grp.add_process(nproc=cfg.sim.procs - 1,
-                    template=TemplateProcess(target=sim_exe, 
-                                             args=sim_args, 
+                    template=ProcessTemplate(target=sim_exe, 
+                                             args=sim_args_list, 
+                                             #args=[cfg.sim.executable,'--backend=dragon','--ppn=4'], 
                                              cwd=sim_run_dir, 
                                              stdout=MSG_DEVNULL))
     sim_grp.init()
     sim_grp.start()
+    print('Done\n', flush=True)
 
     # Setup and launch the distributed training component
-    ml_args = []
+    """
+    print('Launching the training ...', flush=True)
+    ml_args_list = []
     ml_exe = sys.executable
-    ml_args.append(cfg.train.executable.split("/")[-1])
+    ml_args_list.append(cfg.train.executable)
+    ml_args = ''
     if (cfg.train.config_path): ml_args += f' --config-path {cfg.train.config_path}'
     if (cfg.train.config_name): ml_args += f' --config-name {cfg.train.config_name}'
-    ml_args.append(f' ppn={cfg.train.mlprocs_pn}' \
-                    + f' online.simprocs={cfg.sim.procs}' \
-                    + f' online.backend=dragon' \
-                    + f' online.dragon.launch={cfg.deployment}' \
-                    + f' online.dragon.dictionary={dd_serialized}'
-    )
-    ml_run_dir = '/'.join(cfg.train.executable.split("/")[:-1])
+    ml_args += f' ppn={cfg.train.procs_pn}' \
+               + f' online.simprocs={cfg.sim.procs}' \
+               + f' online.backend=dragon' \
+               + f' online.dragon.launch={cfg.deployment}' \
+               + f' online.dragon.dictionary={dd_serialized}'
+    ml_args_list.append(ml_args)
+    ml_run_dir = os.getcwd()
 
     ml_grp = ProcessGroup(restart=False, pmi_enabled=True)
     ml_grp.add_process(nproc=1, 
-                    template=TemplateProcess(target=ml_exe, 
-                                             args=ml_args, 
+                    template=ProcessTemplate(target=ml_exe, 
+                                             args=ml_args_list, 
                                              cwd=ml_run_dir, 
                                              stdout=MSG_PIPE))
     ml_grp.add_process(nproc=cfg.train.procs - 1,
-                    template=TemplateProcess(target=ml_exe, 
-                                             args=ml_args, 
+                    template=ProcessTemplate(target=ml_exe, 
+                                             args=ml_args_list, 
                                              cwd=ml_run_dir, 
                                              stdout=MSG_DEVNULL))
     ml_grp.init()
     ml_grp.start()
+    print('Done\n', flush=True)
+    """
 
     # Join both simulation and training
     sim_grp.join()
     sim_grp.stop()
-    ml_grp.join()
-    ml_grp.stop()
+    #ml_grp.join()
+    #ml_grp.stop()
+    print('Exiting driver ...', flush=True)
 
 
 ## Clustered DB launch
@@ -138,7 +149,7 @@ def main(cfg: DictConfig):
     # Start the Dragon Distributed Dictionary (DDict)
     mp.set_start_method("dragon")
     total_mem_size = cfg.dict.total_mem_size * (1024*1024*1024)
-    dd = DragonDict(cfg.dict.managers_per_node, cfg.dict.num_nodes, total_mem_size)
+    dd = DDict(cfg.dict.managers_per_node, cfg.dict.num_nodes, total_mem_size)
     print("Launched the Dragon Dictionary \n", flush=True)
     
     if (cfg.deployment == "colocated"):

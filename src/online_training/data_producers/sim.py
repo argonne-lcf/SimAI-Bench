@@ -12,7 +12,14 @@ mpi_ops = {
         "max": MPI.MAXLOC
     }
 
-import online_training.backends as client_backends
+try:
+    from online_training.backends.smartredis import SmartRedis_Sim_Client
+except:
+    pass
+try:
+    from online_training.backends.dragon import Dragon_Sim_Client
+except:
+    pass
 from online_training.data_producers import utils
 
 # Main data producer function
@@ -39,7 +46,7 @@ def main():
     parser.add_argument('--ppn', default=4, type=int, help='Number of processes per node')
     parser.add_argument('--logging', default='debug', help='Level of performance logging (debug, info)')
     parser.add_argument('--train_interval', type=int, default=5, help='Time step interval used to sync with ML training')
-    parser.add_argument('--db_launch', default="colocated", type=str, help='Database deployment (colocated, clustered)')
+    parser.add_argument('--launch', default="colocated", type=str, help='Database deployment (colocated, clustered)')
     parser.add_argument('--db_nodes', default=1, type=int, help='Number of database nodes')
     parser.add_argument('--db_max_mem_size', default=1, type=float, help='Maximum size of DB in GB')
     args = parser.parse_args()
@@ -65,9 +72,9 @@ def main():
 
     # Initialize client
     if args.backend=='smartredis':
-        client = client_backends.smartredis.SmartRedis_Sim_Client(args, rank, size)
+        client = SmartRedis_Sim_Client(args, rank, size)
     elif args.backend=='dragon':
-        client = client_backends.dragon.Dragon_Sim_Client(args, rank, size)
+        client = Dragon_Sim_Client(args, rank, size)
     client.init_client()
     comm.Barrier()
     if rank==0:
@@ -111,7 +118,7 @@ def main():
                     success = 0
 
             # Send training data
-            local_free_mem = 1 if client.check_db_mem(train_array) else 0
+            local_free_mem = 1 if client.check_mem(train_array) else 0
             global_free_mem = comm.allreduce(local_free_mem)
             if global_free_mem==size:
                 if (rank==0):
