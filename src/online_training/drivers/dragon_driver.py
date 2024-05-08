@@ -30,11 +30,6 @@ def parseNodeList(scheduler: str) -> List[str]:
             nodelist = [line.split('.')[0] for line in nodelist]
     return nodelist
 
-
-#def sim_mpi_worker(q, sim_args):
-#    dd = q.get()
-#    sim(dd, sim_args)
-
 ## Colocated launch
 def launch_colocated(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
     """
@@ -53,10 +48,6 @@ def launch_colocated(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
         print(nodelist, "\n")
         hosts = ','.join(nodelist)
 
-    # Pass DDict to simulation through a queue
-    #dd_q = mp.Queue(maxsize=cfg.sim.procs)
-    #for _ in range(cfg.sim.procs):
-    #    dd_q.put(dd)
     dd_serialized = dd.serialize()
 
     # Set up and launch the simulation component
@@ -66,9 +57,6 @@ def launch_colocated(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
         sim_exe = sys.executable
         sim_args_list.append(cfg.sim.executable)
     sim_args_list.extend(cfg.sim.arguments.split(' '))
-    #sim_args = cfg.sim.arguments + f' --dictionary={dd_serialized}'
-    #sim_args = '--backend=dragon --model=mlp --problem_size=debug --db_launch=colocated --ppn=4  --tolerance=0.002' + f' --dictionary={dd_serialized}'
-    #sim_args_list.append(sim_args)
     sim_args_list.append(f'--dictionary={dd_serialized}')
     sim_run_dir = os.getcwd()
 
@@ -76,13 +64,11 @@ def launch_colocated(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
     sim_grp.add_process(nproc=1, 
                     template=ProcessTemplate(target=sim_exe, 
                                              args=sim_args_list, 
-                                             #args=[cfg.sim.executable,'--backend=dragon','--ppn=4'], 
                                              cwd=sim_run_dir, 
                                              stdout=MSG_PIPE))
     sim_grp.add_process(nproc=cfg.sim.procs - 1,
                     template=ProcessTemplate(target=sim_exe, 
                                              args=sim_args_list, 
-                                             #args=[cfg.sim.executable,'--backend=dragon','--ppn=4'], 
                                              cwd=sim_run_dir, 
                                              stdout=MSG_DEVNULL))
     sim_grp.init()
@@ -90,20 +76,18 @@ def launch_colocated(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
     print('Done\n', flush=True)
 
     # Setup and launch the distributed training component
-    """
     print('Launching the training ...', flush=True)
     ml_args_list = []
     ml_exe = sys.executable
     ml_args_list.append(cfg.train.executable)
-    ml_args = ''
-    if (cfg.train.config_path): ml_args += f' --config-path {cfg.train.config_path}'
-    if (cfg.train.config_name): ml_args += f' --config-name {cfg.train.config_name}'
-    ml_args += f' ppn={cfg.train.procs_pn}' \
-               + f' online.simprocs={cfg.sim.procs}' \
-               + f' online.backend=dragon' \
-               + f' online.dragon.launch={cfg.deployment}' \
-               + f' online.dragon.dictionary={dd_serialized}'
-    ml_args_list.append(ml_args)
+    if (cfg.train.config_path): ml_args_list.append(f'--config-path={cfg.train.config_path}')
+    if (cfg.train.config_name): ml_args_list.append(f'--config-name={cfg.train.config_name}')
+    ml_args_list.extend([f'ppn={cfg.train.procs_pn}',
+                         f'online.simprocs={cfg.sim.procs}',
+                         f'online.backend=dragon',
+                         f'online.dragon.launch={cfg.deployment}'])
+    dd_serialized_nice = dd_serialized.replace('=','\=')
+    ml_args_list.append(f'online.dragon.dictionary={dd_serialized_nice}')
     ml_run_dir = os.getcwd()
 
     ml_grp = ProcessGroup(restart=False, pmi_enabled=True)
@@ -120,13 +104,12 @@ def launch_colocated(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
     ml_grp.init()
     ml_grp.start()
     print('Done\n', flush=True)
-    """
 
     # Join both simulation and training
+    ml_grp.join()
+    ml_grp.stop()
     sim_grp.join()
     sim_grp.stop()
-    #ml_grp.join()
-    #ml_grp.stop()
     print('Exiting driver ...', flush=True)
 
 

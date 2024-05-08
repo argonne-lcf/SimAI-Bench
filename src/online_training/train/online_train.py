@@ -89,7 +89,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model, logger):
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=500, factor=0.5)
 
     # Create training and validation Datasets
-    num_db_tensors = client.num_db_tensors
+    num_db_tensors = client.num_local_tensors
     num_val_tensors = int(num_db_tensors*cfg.validation_split)
     num_train_tensors = num_db_tensors - num_val_tensors
     tensor_split = [1-cfg.validation_split, cfg.validation_split]
@@ -220,7 +220,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model, logger):
                     client.put_model(cfg.model, model_bytes,
                                      device=cfg.online.smartredis.inference_device)
             if (comm.rank==0):
-                logger.info("Shared model checkpoint")
+                logger.info("Shared model checkpoint\n")
 
         iepoch = iepoch + 1 
 

@@ -162,8 +162,6 @@ class SmartRedis_Sim_Client:
         self.times["tot_meta"] += toc - tic
         global_exists = comm.allreduce(local_exists)
         if global_exists==self.size:
-            #if self.rank == 0:
-            #    print("\nFound model checkpoint in DB\n", flush=True)
             return True
         else:
             return False
@@ -272,7 +270,7 @@ class SmartRedis_Train_Client:
         self.ndIn = None
         self.ndOut = None
         self.num_tot_tensors = None
-        self.num_db_tensors = None
+        self.num_local_tensors = None
         self.head_rank = None
         self.tensor_batch = None
         self.dataOverWr = None
@@ -357,10 +355,10 @@ class SmartRedis_Train_Client:
         self.ndIn = dataSizeInfo[2]
         self.ndOut = self.ndTot - self.ndIn
         self.num_tot_tensors = dataSizeInfo[3]
-        self.num_db_tensors = dataSizeInfo[4]
+        self.num_local_tensors = dataSizeInfo[4]
         self.head_rank = dataSizeInfo[5]
         
-        max_batch_size = int(self.num_db_tensors/(self.ppn*self.ppd))
+        max_batch_size = int(self.num_local_tensors/(self.ppn*self.ppd))
         if (not self.global_shuffling):
             self.tensor_batch = max_batch_size
         else:
@@ -375,12 +373,6 @@ class SmartRedis_Train_Client:
             if (self.key_exists("tensor-ow")):
                 self.dataOverWr = self.get_value('tensor-ow')
                 break
-        if (self.rank==0):
-            if (self.dataOverWr>0.5): 
-                print("\nTraining data is overwritten in DB \n")
-            else:
-                print("\nTraining data is accumulated in DB \n")
-            sys.stdout.flush()
 
     # Set up the training problem from simulation meta data
     def setup_problem(self):

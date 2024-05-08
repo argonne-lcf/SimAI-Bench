@@ -3,6 +3,7 @@ import os, os.path
 import io
 from typing import Optional
 from time import perf_counter
+import logging
 import numpy as np
 import torch
 try:
@@ -50,7 +51,7 @@ class Dragon_Sim_Client:
     # Initialize client
     def init_client(self):
         tic = perf_counter()
-        self._dd = DDict.attach(self._dd_serialized)
+        self._dd = DDict.attach(self._dd_serialized, timeout=30)
         toc = perf_counter()
         self.times["init"] = toc - tic
 
@@ -172,8 +173,6 @@ class Dragon_Sim_Client:
         self.times["tot_meta"] += toc - tic
         global_exists = comm.allreduce(local_exists)
         if global_exists==self.size:
-            #if self.rank == 0:
-            #    print("\nFound model checkpoint in DB\n", flush=True)
             return True
         else:
             return False
@@ -239,7 +238,7 @@ class Dragon_Sim_Client:
             self.time_stats[key] = stats
 
     # Print timing statistics
-    def print_stats(self):
+    def print_stats(self, logger: logging.Logger):
         """Print timing statistics
         """
         for _, (key, val) in enumerate(self.time_stats.items()):
@@ -247,7 +246,7 @@ class Dragon_Sim_Client:
                            f"max = {val['max'][0]:>8e} , " + \
                            f"avg = {val['avg']:>8e} , " + \
                            f"std = {val['std']:>8e} "
-            print(f"SmartRedis {key} [s] " + stats_string)
+            logger.info(f"SmartRedis {key} [s] " + stats_string)
 
 
 ##########################################################
@@ -259,19 +258,20 @@ class Dragon_Train_Client:
     def __init__(self, cfg, rank: int, size: int):
         self.rank = rank
         self.size = size
+        self._dd_serialized = cfg.online.dragon.dictionary
         self.dd_launch = cfg.online.dragon.launch
         self.ppn = cfg.ppn
         self.ppd = cfg.ppd
         self.global_shuffling = cfg.online.global_shuffling
         self.batch = cfg.online.batch
 
-        self._dd = cfg.dragon.dictionary
+        self._dd = None
         self.npts = None
         self.ndTot = None
         self.ndIn = None
         self.ndOut = None
         self.num_tot_tensors = None
-        self.num_dd_tensors = None
+        self.num_local_tensors = None
         self.head_rank = None
         self.tensor_batch = None
         self.dataOverWr = None
@@ -285,12 +285,12 @@ class Dragon_Train_Client:
         self.time_stats = {}
         self.train_array_sz = 0
 
-    # Initializa client
+    # Initialize client
     def init(self):
         """Initialize the SmartRedis client
         """
         tic = perf_counter()
-        self._dd = self._dd.attach()
+        self._dd = DDict.attach(self._dd_serialized, timeout=30)
         toc = perf_counter()
         self.times['init'] = toc - tic
 
@@ -339,8 +339,6 @@ class Dragon_Train_Client:
 
     # Read the size information from DB
     def read_sizeInfo(self):
-        if (self.rank == 0):
-            print("\nGetting size info from DB ...", flush=True)
         while True:
             if (self.key_exists("sizeInfo")):
                 dataSizeInfo = self.get_array('sizeInfo','meta')
@@ -350,10 +348,10 @@ class Dragon_Train_Client:
         self.ndIn = dataSizeInfo[2]
         self.ndOut = self.ndTot - self.ndIn
         self.num_tot_tensors = dataSizeInfo[3]
-        self.num_dd_tensors = dataSizeInfo[4]
+        self.num_local_tensors = dataSizeInfo[4]
         self.head_rank = dataSizeInfo[5]
         
-        max_batch_size = int(self.num_dd_tensors/(self.ppn*self.ppd))
+        max_batch_size = int(self.num_local_tensors/(self.ppn*self.ppd))
         if (not self.global_shuffling):
             self.tensor_batch = max_batch_size
         else:
@@ -362,27 +360,12 @@ class Dragon_Train_Client:
             else:
                 self.tensor_batch = self.batch
 
-        if (self.rank == 0):
-            print(f"Samples per simulation tensor: {self.npts}")
-            print(f"Model input features: {self.ndIn}")
-            print(f"Model output targets: {self.ndOut}")
-            print(f"Total tensors in all DB: {self.num_tot_tensors}")
-            print(f"Tensors in local DB: {self.num_dd_tensors}")
-            print(f"Simulation tensors per batch: {self.tensor_batch}")
-            sys.stdout.flush()
-
     # Read the flag determining if data is overwritten in DB
     def read_overwrite(self):
         while True:
             if (self.key_exists("tensor-ow")):
                 self.dataOverWr = self.get_value('tensor-ow')
                 break
-        if (self.rank==0):
-            if (self.dataOverWr>0.5): 
-                print("\nTraining data is overwritten in DB \n")
-            else:
-                print("\nTraining data is accumulated in DB \n")
-            sys.stdout.flush()
 
     # Set up the training problem from simulation meta data
     def setup_problem(self):
@@ -433,7 +416,7 @@ class Dragon_Train_Client:
             self.time_stats[key] = stats
 
     # Print timing statistics
-    def print_stats(self):
+    def print_stats(self, logger: logging.Logger):
         """Print timing statistics
         """
         for _, (key, val) in enumerate(self.time_stats.items()):
@@ -441,5 +424,5 @@ class Dragon_Train_Client:
                            f"max = {val['max'][0]:>8e} , " + \
                            f"avg = {val['avg']:>8e} , " + \
                            f"std = {val['std']:>8e} "
-            print(f"SmartRedis {key} [s] " + stats_string)
+            logger.info(f"SmartRedis {key} [s] " + stats_string)
 

@@ -20,7 +20,15 @@ from online_training.train.offline_train import offlineTrainLoop
 from online_training.train import models
 from online_training.train.time_prof import timeStats
 from online_training.train import utils
-import online_training.backends as client_backends
+#import online_training.backends as client_backends
+try:
+    from online_training.backends.smartredis import SmartRedis_Train_Client
+except:
+    pass
+try:
+    from online_training.backends.dragon import Dragon_Train_Client
+except:
+    pass
 
 ## Main function
 @hydra.main(version_base=None, config_path="./conf", config_name="train_config")
@@ -37,9 +45,9 @@ def main(cfg: DictConfig):
     date = datetime.datetime.now().strftime('%d.%m.%y_%H.%M') if comm.rank==0 else None
     date = comm.comm.bcast(date, root=0)
     comm.comm.Barrier()
-    mh = utils.MPIFileHandler(f"train_{date}.log")                                        
+    mh = utils.MPIFileHandler(f"train_{date}.log")                       
     #formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
-    formatter = logging.Formatter('%(levelname)s:%(message)s')
+    formatter = logging.Formatter('%(message)s')
     mh.setFormatter(formatter)
     logger.addHandler(mh)
     
@@ -95,9 +103,9 @@ def main(cfg: DictConfig):
     client = None
     if cfg.online.backend:
         if cfg.online.backend=='smartredis':
-            client = client_backends.smartredis.SmartRedis_Train_Client(cfg, comm.rank, comm.size)
+            client = SmartRedis_Train_Client(cfg, comm.rank, comm.size)
         elif cfg.online.backend=='dragon':
-            client = client_backends.dragon.Dragon_Train_Client(cfg, comm.rank, comm.size)
+            client = Dragon_Train_Client(cfg, comm.rank, comm.size)
         client.init()
         comm.comm.Barrier()
         if comm.rank == 0:
@@ -109,8 +117,9 @@ def main(cfg: DictConfig):
             logger.info(f"Model input features: {client.ndIn}")
             logger.info(f"Model output targets: {client.ndOut}")
             logger.info(f"Total tensors in all DB: {client.num_tot_tensors}")
-            logger.info(f"Tensors in local DB: {client.num_db_tensors}")
+            logger.info(f"Tensors in local DB: {client.num_local_tensors}")
             logger.info(f"Simulation tensors per batch: {client.tensor_batch}")
+            logger.info(f"Overwriting simulaiton tensors: {client.dataOverWr}")
 
     # Instantiate the model and get the training data
     model, data = models.load_model(cfg, comm, client, rng)
