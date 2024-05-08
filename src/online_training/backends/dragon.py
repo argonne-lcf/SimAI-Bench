@@ -49,11 +49,17 @@ class Dragon_Sim_Client:
         self.edge_index = None
 
     # Initialize client
-    def init_client(self):
+    def init(self):
         tic = perf_counter()
         self._dd = DDict.attach(self._dd_serialized, timeout=30)
         toc = perf_counter()
         self.times["init"] = toc - tic
+
+    # Destroy the client
+    def destroy(self):
+        """Destroy the client
+        """
+        self._dd.detach()
 
     # General method to put an object to the Dictionary
     def put(self, key: str, val) -> None:
@@ -144,16 +150,16 @@ class Dragon_Sim_Client:
 
     # Check DB memory
     def check_mem(self, array: np.ndarray) -> bool:
-        #tic = perf_counter()
-        #db_info=self.client.get_db_node_info([self.db_address])[0]
-        #toc = perf_counter()
-        #self.times["tot_meta"] += toc - tic
-        #used_mem = float(db_info['Memory']['used_memory'])
-        #free_mem = self.max_mem - used_mem
-        #if (sys.getsizeof(array) < free_mem):
-        return True
-        #else:
-        #    return False
+        key = 'asdf_{self.rank}'
+        try:
+            tic = perf_counter()
+            self.put(key,array)
+            del self._dd[key]
+            toc = perf_counter()
+            self.times["tot_meta"] += toc - tic
+            return True
+        except:
+            return False
 
     # Send time step
     def send_step(self, step: int):
@@ -185,7 +191,7 @@ class Dragon_Sim_Client:
         tic = perf_counter()
         model_bytes = self.get(self.model)
         buffer = io.BytesIO(model_bytes)
-        model_jit = torch.jit.load(buffer)
+        model_jit = torch.jit.load(buffer, map_location='cpu')
         x = torch.from_numpy(inputs).type(torch.float32)
         if (self.model=="gnn"):
             edge_index = torch.from_numpy(self.edge_index).type(torch.int64)
@@ -287,12 +293,18 @@ class Dragon_Train_Client:
 
     # Initialize client
     def init(self):
-        """Initialize the SmartRedis client
+        """Initialize the client
         """
         tic = perf_counter()
         self._dd = DDict.attach(self._dd_serialized, timeout=30)
         toc = perf_counter()
         self.times['init'] = toc - tic
+
+    # Destroy the client
+    def destroy(self):
+        """Destroy the client
+        """
+        self._dd.detach()
 
     # Check if tensor key exists
     def key_exists(self, key: str) -> bool:

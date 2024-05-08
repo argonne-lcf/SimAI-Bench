@@ -8,10 +8,15 @@ from time import perf_counter
 import random
 import datetime
 import logging
+import socket
+
+# Import MPI before torch to avoid error
+import mpi4py
+mpi4py.rc.initialize = False
+from mpi4py import MPI
 
 # Import ML libraries
 import torch
-import socket
 import torch.distributed as dist
 
 # Import online_training modules
@@ -29,6 +34,7 @@ try:
     from online_training.backends.dragon import Dragon_Train_Client
 except:
     pass
+
 
 ## Main function
 @hydra.main(version_base=None, config_path="./conf", config_name="train_config")
@@ -119,7 +125,7 @@ def main(cfg: DictConfig):
             logger.info(f"Total tensors in all DB: {client.num_tot_tensors}")
             logger.info(f"Tensors in local DB: {client.num_local_tensors}")
             logger.info(f"Simulation tensors per batch: {client.tensor_batch}")
-            logger.info(f"Overwriting simulaiton tensors: {client.dataOverWr}")
+            logger.info(f"Overwriting simulaiton tensors: {client.dataOverWr}\n")
 
     # Instantiate the model and get the training data
     model, data = models.load_model(cfg, comm, client, rng)
@@ -183,6 +189,8 @@ def main(cfg: DictConfig):
         logger.info("FOM:")
         utils.print_fom(logger, t_data.t_tot, train_array_sz, client.time_stats)
 
+    if cfg.online.backend:
+        client.destroy()
     mh.close()
     comm.finalize()
 

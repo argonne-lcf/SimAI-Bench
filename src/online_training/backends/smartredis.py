@@ -16,7 +16,7 @@ from smartredis import Client
 class SmartRedis_Sim_Client:
     def __init__(self, args, rank: int, size: int):
         self.client = None
-        self.db_launch = args.db_launch
+        self.launch = args.launch
         self.db_nodes = args.db_nodes
         self.rank = rank
         self.size = size
@@ -36,10 +36,10 @@ class SmartRedis_Sim_Client:
         }
         self.time_stats = {}
 
-        if (self.db_launch == "colocated"):
+        if (self.launch == "colocated"):
             self.db_nodes = 1
             self.head_rank = self.ppn * self.rank/self.ppn
-        elif (self.db_launch == "clustered"):
+        elif (self.launch == "clustered"):
             self.ppn = size
             self.head_rank = 0
 
@@ -48,7 +48,7 @@ class SmartRedis_Sim_Client:
         self.edge_index = None
 
     # Initialize client
-    def init_client(self):
+    def init(self):
         self.db_address = os.environ["SSDB"]
         tic = perf_counter()
         if (self.db_nodes==1):
@@ -57,7 +57,13 @@ class SmartRedis_Sim_Client:
             self.client = Client(cluster=True)
         toc = perf_counter()
         self.times["init"] = toc - tic
-    
+
+    # Destroy the client
+    def destroy(self):
+        """Destroy the client
+        """
+        pass
+          
     # Set up training case and write metadata
     def setup_training_problem(self, coords: np.ndarray, 
                                data_info: dict) -> None:
@@ -130,7 +136,7 @@ class SmartRedis_Sim_Client:
         self.times["train"].append(toc - tic)
 
     # Check DB memory
-    def check_db_mem(self, array: np.ndarray) -> bool:
+    def check_mem(self, array: np.ndarray) -> bool:
         tic = perf_counter()
         db_info=self.client.get_db_node_info([self.db_address])[0]
         toc = perf_counter()
@@ -284,7 +290,7 @@ class SmartRedis_Train_Client:
         self.time_stats = {}
         self.train_array_sz = 0
 
-    # Initializa client
+    # Initialize client
     def init(self):
         """Initialize the SmartRedis client
         """
@@ -301,6 +307,12 @@ class SmartRedis_Train_Client:
         toc = perf_counter()
         self.times['init'] = toc - tic
 
+    # Destroy the client
+    def destroy(self):
+        """Destroy the client
+        """
+        pass
+          
     # Check if tensor key exists
     def key_exists(self, key: str) -> bool:
         return self.client.poll_tensor(key,0,1)

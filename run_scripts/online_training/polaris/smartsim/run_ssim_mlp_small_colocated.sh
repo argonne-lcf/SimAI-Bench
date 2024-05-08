@@ -1,16 +1,7 @@
 #!/bin/bash
 
 # Set env
-#module load conda/2023-10-04
-#conda activate
-#source /eagle/datascience/balin/Polaris/SmartSim_envs/venv_conda-2023-10-04/_ssim_env_24_4/bin/activate
-module use /soft/modulefiles
-module load conda/2024-04-25
-conda activate
-source /eagle/datascience/balin/Polaris/SmartSim_envs/venv_conda-2024-04-25/_ssim_env/bin/activate
-export MPICH_GPU_SUPPORT_ENABLED=0
-export TORCH_PATH=$( python -c 'import torch; print(torch.__path__[0])' )
-export LD_LIBRARY_PATH=$TORCH_PATH/lib:$LD_LIBRARY_PATH
+source /eagle/datascience/balin/SimAI-Bench/env_ssim.sh
 echo Loaded modules:
 module list
 

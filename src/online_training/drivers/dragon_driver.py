@@ -9,7 +9,8 @@ import dragon
 from dragon.data.ddict.ddict import DDict
 #from dragon.data.distdictionary.dragon_dict import DragonDict
 from dragon.native.process_group import ProcessGroup
-from dragon.native.process import ProcessTemplate, MSG_PIPE, MSG_DEVNULL
+from dragon.native.process import Process, ProcessTemplate, MSG_PIPE, MSG_DEVNULL
+from dragon.infrastructure.connection import Connection
 
 ## Define function to parse node list
 def parseNodeList(scheduler: str) -> List[str]:
@@ -29,6 +30,46 @@ def parseNodeList(scheduler: str) -> List[str]:
             nodelist = [line.rstrip() for line in nodelist]
             nodelist = [line.split('.')[0] for line in nodelist]
     return nodelist
+
+## Read output from ProcessGroup
+def read_output(stdout_conn: Connection) -> str:
+    """Read stdout from the Dragon connection.
+
+    :param stdout_conn: Dragon connection to rank 0's stdout
+    :type stdout_conn: Connection
+    :return: string with the output from stdout
+    :rtype: str
+    """
+    output = ""
+    try:
+        # this is brute force
+        while True:
+            output += stdout_conn.recv()
+    except EOFError:
+        pass
+    finally:
+        stdout_conn.close()
+    return output
+
+## Read error from ProcessGroup
+def read_error(stderr_conn: Connection) -> str:
+    """Read stdout from the Dragon connection.
+
+    :param stderr_conn: Dragon connection to rank 0's stderr
+    :type stderr_conn: Connection
+    :return: string with the output from stderr
+    :rtype: str
+    """
+    output = ""
+    try:
+        # this is brute force
+        while True:
+            output += stderr_conn.recv()
+    except EOFError:
+        pass
+    finally:
+        stderr_conn.close()
+    return output
 
 ## Colocated launch
 def launch_colocated(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
@@ -95,7 +136,8 @@ def launch_colocated(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
                     template=ProcessTemplate(target=ml_exe, 
                                              args=ml_args_list, 
                                              cwd=ml_run_dir, 
-                                             stdout=MSG_PIPE))
+                                             stdout=MSG_PIPE,
+                                             stderr=MSG_PIPE))
     ml_grp.add_process(nproc=cfg.train.procs - 1,
                     template=ProcessTemplate(target=ml_exe, 
                                              args=ml_args_list, 
@@ -104,6 +146,21 @@ def launch_colocated(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
     ml_grp.init()
     ml_grp.start()
     print('Done\n', flush=True)
+
+    # Read output
+    #group_procs = [Process(None, ident=puid) for puid in sim_grp.puids]
+    #for proc in group_procs:
+    #    if proc.stdout_conn:
+    #        std_out = read_output(proc.stdout_conn)
+    #        print(std_out, flush=True)
+    group_procs = [Process(None, ident=puid) for puid in ml_grp.puids]
+    for proc in group_procs:
+        #if proc.stdout_conn:
+        #    std_out = read_output(proc.stdout_conn)
+        #    print(std_out, flush=True)
+        if proc.stderr_conn:
+            std_err = read_error(proc.stderr_conn)
+            print(std_err, flush=True)
 
     # Join both simulation and training
     ml_grp.join()
@@ -145,7 +202,7 @@ def main(cfg: DictConfig):
         print("\nERROR: Deployment is either colocated or clustered\n")
 
     # Close the DDict and quit
-    dd.close()
+    dd.destroy()
     print("\nClosed the Dragon Dictionary and quitting ...", flush=True)
 
 

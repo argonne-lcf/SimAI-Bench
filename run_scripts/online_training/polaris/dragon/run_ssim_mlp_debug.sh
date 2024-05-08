@@ -1,11 +1,7 @@
 #!/bin/bash
 
 # Set env
-#module use /soft/modulefiles
-#module load conda/2024-04-29
-#conda activate
-#source /eagle/datascience/balin/SimAI-Bench/venv/dragon-0.9/_dragon_env/bin/activate
-export MPICH_GPU_SUPPORT_ENABLED=0
+source /eagle/datascience/balin/SimAI-Bench/env_dragon.sh
 echo Loaded modules:
 module list
 

@@ -75,7 +75,7 @@ def main():
         client = SmartRedis_Sim_Client(args, rank, size)
     elif args.backend=='dragon':
         client = Dragon_Sim_Client(args, rank, size)
-    client.init_client()
+    client.init()
     comm.Barrier()
     if rank==0:
         logger.info(f'All {args.backend} clients initialized \n')
@@ -161,6 +161,7 @@ def main():
         logger.info("\nFOM:")
         utils.print_fom(logger, time_to_solution, train_array_sz, client.time_stats)
 
+    client.destroy()
     mh.close()
     MPI.Finalize()
 

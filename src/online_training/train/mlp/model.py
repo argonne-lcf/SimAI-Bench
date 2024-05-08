@@ -18,7 +18,7 @@ try:
 except:
     pass
 
-from datasets import MiniBatchDataset
+from ..datasets import MiniBatchDataset
 
 
 class MLP(nn.Module): 
