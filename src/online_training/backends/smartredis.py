@@ -159,11 +159,11 @@ class SmartRedis_Sim_Client:
     
     # Check to see if model exists in DB
     def model_exists(self, comm) -> bool:
+        local_exists = 0
         tic = perf_counter()
-        if (self.model=='gnn'):
-            local_exists = 1 if os.path.exists(f"/tmp/{self.model}.pt") else 0
-        else:
-            local_exists = 1 if self.client.model_exists(self.model) else 0
+        #if self.client.model_exists(self.model): local_exists = 1
+        #if local_exists==0:
+        if self.client.key_exists(self.model): local_exists = 1
         toc = perf_counter()
         self.times["tot_meta"] += toc - tic
         global_exists = comm.allreduce(local_exists)
@@ -178,21 +178,19 @@ class SmartRedis_Sim_Client:
         if inputs.ndim<2:
             inputs = np.expand_dims(inputs, axis=1)
         tic = perf_counter()
-        if (self.model=="gnn"):
-            #model_bytes = self.client.get_tensor(model_name)[0]
-            #buffer = io.BytesIO(model_bytes)
-            #model_jit = torch.jit.load(buffer)
-            while True:
-                try:
-                    model_jit = torch.jit.load(f"/tmp/{self.model}.pt")
-                    break
-                except:
-                    pass
+        if self.client.key_exists(f'{self.model}_bytes'):
+            model_bytes = self.client.get_bytes(self.model)
+            buffer = io.BytesIO(model_bytes)
+            model_jit = torch.jit.load(buffer, map_location='cpu')
             x = torch.from_numpy(inputs).type(torch.float32)
-            edge_index = torch.from_numpy(self.edge_index).type(torch.int64)
-            pos = torch.from_numpy(self.coords).type(torch.float32)
-            with torch.no_grad():
-                pred = model_jit(x, edge_index, pos).numpy()
+            if self.model=='mlp':
+                with torch.no_grad():
+                    pred = model_jit(x).numpy()
+            elif self.model=='gnn':
+                edge_index = torch.from_numpy(self.edge_index).type(torch.int64)
+                pos = torch.from_numpy(self.coords).type(torch.float32)
+                with torch.no_grad():
+                    pred = model_jit(x, edge_index, pos).numpy()
         else:
             input_key = f"{self.model}_inputs_{self.rank}"
             output_key = f"{self.model}_outputs_{self.rank}"
@@ -263,7 +261,7 @@ class SmartRedis_Train_Client:
     def __init__(self, cfg, rank: int, size: int):
         self.rank = rank
         self.size = size
-        self.db_launch = cfg.online.smartredis.db_launch
+        self.launch = cfg.online.smartredis.launch
         self.db_nodes = cfg.online.smartredis.db_nodes
         self.ppn = cfg.ppn
         self.ppd = cfg.ppd
@@ -295,7 +293,7 @@ class SmartRedis_Train_Client:
         """Initialize the SmartRedis client
         """
         # Read the address of the co-located database first
-        if (self.db_launch=='colocated'):
+        if (self.launch=='colocated'):
             address = os.environ['SSDB']
         else:
             address = None
@@ -401,9 +399,12 @@ class SmartRedis_Train_Client:
 
     # Put model to DB
     def put_model(self, key: str, model_bytes: bytes,
-                  ml_framework: Optional[str] = 'TORCH',
-                  device: Optional[str] = 'CPU') -> None:
-        self.client.set_model(key, model_bytes, ml_framework, device)
+                  device: Optional[str] = None) -> None:
+        if key=='mlp' and device:
+            self.client.set_model(key, model_bytes, 'TORCH', device)
+            self.put_value(f'{key}_bytes',1)
+        else:
+            self.client.put_bytes(key, model_bytes)
 
     # Collect timing statistics across ranks
     def collect_stats(self, comm):

@@ -154,7 +154,7 @@ class Dragon_Sim_Client:
         try:
             tic = perf_counter()
             self.put(key,array)
-            del self._dd[key]
+            #del self._dd[key]
             toc = perf_counter()
             self.times["tot_meta"] += toc - tic
             return True
@@ -394,9 +394,9 @@ class Dragon_Train_Client:
 
     # Put model to DB
     def put_model(self, key: str, model_bytes: bytes,
-                  ml_framework: Optional[str] = 'TORCH',
-                  device: Optional[str] = 'CPU') -> None:
+                  device: Optional[str] = None) -> None:
         self._dd[key] = model_bytes
+        
 
     # Collect timing statistics across ranks
     def collect_stats(self, comm):

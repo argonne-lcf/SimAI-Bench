@@ -100,7 +100,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model, logger):
 
     # While loop that checks when training data is available on database
     if (comm.rank == 0):
-        logger.info("Waiting for training data to be populated in DB ...")
+        logger.info("Waiting for training data to be populated ...")
     while True:
         if client.key_exists("step"):
             step = client.get_value('step')
@@ -207,18 +207,13 @@ def onlineTrainLoop(cfg, comm, client, t_data, model, logger):
         if ((iepoch+1)%cfg.online.checkpoints==0):
             if (comm.rankl==0):
                 jit_model = model.module.script_model()
-                #model_arr = np.array([model_bytes])
-                #client.client.put_tensor(cfg.model,model_arr)
-                if (cfg.model=="gnn"):
-                    torch.jit.save(jit_model, f"/tmp/{cfg.model}.pt")
-                else:
-                    buffer = io.BytesIO()
-                    torch.jit.save(jit_model, buffer)
-                    model_bytes = buffer.getvalue()
-                    if client.model_exists(cfg.model):
-                        client.delete_model(cfg.model)
-                    client.put_model(cfg.model, model_bytes,
-                                     device=cfg.online.smartredis.inference_device)
+                buffer = io.BytesIO()
+                torch.jit.save(jit_model, buffer)
+                model_bytes = buffer.getvalue()
+                if client.model_exists(cfg.model):
+                    client.delete_model(cfg.model)
+                client.put_model(cfg.model, model_bytes,
+                                 device=cfg.online.smartredis.inference_device)
             if (comm.rank==0):
                 logger.info("Shared model checkpoint\n")
 
