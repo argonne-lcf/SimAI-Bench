@@ -32,7 +32,7 @@ def setup_online_dataloaders(cfg, comm, dataset, batch_size, split: List[float])
     generator = torch.Generator().manual_seed(12345)
     train_dataset, val_dataset = random_split(dataset, split, generator=generator)
  
-    if (cfg.online.smartredis.launch=="colocated"):
+    if (cfg.online.launch=="colocated"):
         replicas = cfg.ppn*cfg.ppd
         rank_arg = comm.rankl
     else:
@@ -96,7 +96,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model, logger):
     if (num_val_tensors==0 and cfg.validation_split>0):
         if (comm.rank==0): logger.warning("Insufficient number of tensors for validation -- skipping it")
     if client.dataOverWr:
-        key_dataset = RankDataset(num_db_tensors,client.head_rank,cfg.model,comm.rank)
+        key_dataset = RankDataset(num_db_tensors,client.sim_head_rank,cfg.model,comm.rank)
 
     # While loop that checks when training data is available on database
     if (comm.rank == 0):
@@ -136,7 +136,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model, logger):
                 if cfg.model=="gnn": 
                     num_db_tensors = 1
                     client.tensor_batch =  len(step_list)
-                key_dataset = RankStepDataset(num_db_tensors, step_list, client.head_rank, cfg.model, comm.rank)
+                key_dataset = RankStepDataset(num_db_tensors, step_list, client.sim_head_rank, cfg.model, comm.rank)
             train_tensor_loader, \
                 train_sampler, \
                 val_tensor_loader = setup_online_dataloaders(cfg, comm, key_dataset, client.tensor_batch, 
@@ -205,12 +205,12 @@ def onlineTrainLoop(cfg, comm, client, t_data, model, logger):
 
         # Share model checkpoint
         if ((iepoch+1)%cfg.online.checkpoints==0):
-            if (comm.rankl==0):
+            if comm.rank==client.head_rank:
                 jit_model = model.module.script_model()
                 buffer = io.BytesIO()
                 torch.jit.save(jit_model, buffer)
-                if client.model_exists(cfg.model):
-                    client.delete_model(cfg.model)
+                #if client.model_exists(cfg.model):
+                #    client.delete_model(cfg.model)
                 client.put_model(cfg.model, buffer,
                                  device=cfg.online.smartredis.inference_device)
             if (comm.rank==0):
@@ -223,7 +223,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model, logger):
 
 
     # Sync with simulation
-    if comm.rankl==0:
+    if comm.rank==client.head_rank:
         client.put_value('train-run', 0)
  
     sample_data = next(iter(train_loader)) 

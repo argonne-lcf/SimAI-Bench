@@ -6,7 +6,7 @@ DRIVER=$BASE_DIR/src/online_training/drivers/ssim_driver.py
 SIM_EXE=$BASE_DIR/src/online_training/data_producers/sim.py
 ML_EXE=$BASE_DIR/src/online_training/train/train.py
 TRAIN_CONFIG_PATH=$PWD/conf
-TRAIN_CONFIG_NAME="train_config_mlp_small"
+TRAIN_CONFIG_NAME="train_config_mlp_debug"
 
 # Set up run
 SIM_RANKS=4
@@ -16,7 +16,7 @@ echo Number of ML ranks: $ML_RANKS
 echo
 
 # Run
-SIM_ARGS="--model\=mlp --problem_size\=small --db_launch\=colocated --ppn\=${SIM_RANKS} --tolerance\=0.002 --train_interval\=10 --db_max_mem_size\=0.1"
+SIM_ARGS="--backend\=smartredis --model\=mlp --problem_size\=debug --launch\=colocated --ppn\=${SIM_RANKS} --tolerance\=0.002"
 python $DRIVER \
     database.network_interface=lo database.launcher=local \
     sim.executable=$SIM_EXE sim.arguments="${SIM_ARGS}" \

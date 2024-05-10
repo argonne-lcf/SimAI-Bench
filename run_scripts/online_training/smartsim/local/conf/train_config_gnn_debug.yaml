@@ -9,10 +9,10 @@ num_samples_per_rank: 111 # integer - number of data samples per rank. 111 - 20x
 reproducibility: True # True, False - make training deterministic
 
 # Training hyperparameters config
-epochs: 100 # integer - max number of epochs for training
+epochs: 10 # integer - max number of epochs for training
 mini_batch: 1 # integer - mini batch size for SGD update
 learning_rate: 0.001 # float - serial leranring rate
-tolerance: 1.0e-4 # float - convergence tolerance of validation loss
+tolerance: 1.0e-8 # float - convergence tolerance of validation loss
 validation_split: 0.0 # float - percentage of data kept for validation
 optimizer: "Adam" # Adam - optimizer used for training
 scheduler: "None" # None,Plateau - optimizer scheduler to be used
@@ -23,15 +23,17 @@ save_db: False # True, False - save database contents at the end of trainint to 
 
 # Online train config
 online:
-    backend: "smartsim" # smartsim - descriptor for workflow driver
+    backend: "smartredis" # smartredis,dragon - backend for client
+    launch: "colocated" # colocated,clustered - deployment method of workflow components
     global_shuffling: False # True, False - enforce shuffling of DB tensors at every epoch
     batch: 0 # integer - number of tensors to grab from database at once for global shuffling, 0: grab all tensors at once, recommended
     simprocs: 1 # int - number of MPI processes simulation is running with
-    checkpoints: 20 # int - frequency in epochs to share model checkpoint
+    checkpoints: 10 # int - frequency in epochs to share model checkpoint
     smartredis:
-        db_launch: "" # colocated,clustered - deployment method of SmartSim database
         db_nodes: 1 # int - number of nodes dabase is sharded across. Always 1 for colocated DB.
-        inference_device: "CPU" # CPU,GPU,GPU:# - device string for inference with RedisAI from data producer
+        inference_device: "" # CPU,GPU,GPU:# - device string for inference with RedisAI from data producer
+    dragon:
+        dictionary: "" # str - serialized dragon dictionary
  
 # Model specific config
 mlp:
@@ -40,7 +42,7 @@ mlp:
     neurons: 40 # integer - number of neurons in layers for MLP model
     layers: 5 # integer - number of hidden layers for MLP model
 gnn:
-    spatial_dim: 2 # int - spatial dimension of graph
+    spatial_dim: 1 # int - spatial dimension of graph
     input_channels: 1 # int - input channels for model
     output_channels: 1 # int - output channels for model
     hidden_channels: 16 # int - number of hidden node features

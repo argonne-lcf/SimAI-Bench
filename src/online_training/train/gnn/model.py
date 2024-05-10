@@ -289,7 +289,7 @@ class GNN(nn.Module):
         """
         Load data from database and create on-rank data loader
         """
-        logger.debug(f'[{comm.rank}]: Grabbing tensors with key {keys}', flush=True)
+        logger.debug(f'[{comm.rank}]: Grabbing tensors with key {keys}')
 
         if (cfg.precision == "fp32" or cfg.precision == "tf32"):
             dtype = torch.float32

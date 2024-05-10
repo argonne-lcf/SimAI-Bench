@@ -19,7 +19,7 @@ from dragon.data.ddict.ddict import DDict
 class Dragon_Sim_Client:
     def __init__(self, args, rank: int, size: int):
         self._dd_serialized = args.dictionary
-        self.dd_launch = args.launch
+        self.launch = args.launch
         self.rank = rank
         self.size = size
         self.ppn = args.ppn
@@ -38,9 +38,9 @@ class Dragon_Sim_Client:
         }
         self.time_stats = {}
 
-        if (self.dd_launch == "colocated"):
+        if (self.launch == "colocated"):
             self.head_rank = self.ppn * self.rank/self.ppn
-        elif (self.dd_launch == "clustered"):
+        elif (self.launch == "clustered"):
             self.ppn = size
             self.head_rank = 0
 
@@ -265,7 +265,7 @@ class Dragon_Train_Client:
         self.rank = rank
         self.size = size
         self._dd_serialized = cfg.online.dragon.dictionary
-        self.dd_launch = cfg.online.dragon.launch
+        self.launch = cfg.online.launch
         self.ppn = cfg.ppn
         self.ppd = cfg.ppd
         self.global_shuffling = cfg.online.global_shuffling

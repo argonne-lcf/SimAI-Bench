@@ -1,3 +1,4 @@
+import sys
 from argparse import ArgumentParser
 from time import perf_counter, sleep, time
 from datetime import datetime
@@ -14,11 +15,13 @@ mpi_ops = {
 
 try:
     from online_training.backends.smartredis import SmartRedis_Sim_Client
-except:
+except Exception as err: 
+    print(err, flush=True)
     pass
 try:
     from online_training.backends.dragon import Dragon_Sim_Client
-except:
+except Exception as err:
+    print(err, flush=True)
     pass
 from online_training.data_producers import utils
 

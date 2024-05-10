@@ -126,7 +126,8 @@ def launch_colocated(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
     ml_args_list.extend([f'ppn={cfg.train.procs_pn}',
                          f'online.simprocs={cfg.sim.procs}',
                          f'online.backend=dragon',
-                         f'online.dragon.launch={cfg.deployment}'])
+                         f'online.launch={cfg.deployment}'],
+                         )
     dd_serialized_nice = dd_serialized.replace('=','\=')
     ml_args_list.append(f'online.dragon.dictionary={dd_serialized_nice}')
     ml_run_dir = os.getcwd()

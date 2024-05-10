@@ -39,7 +39,7 @@ class SmartRedis_Sim_Client:
 
         if (self.launch == "colocated"):
             self.db_nodes = 1
-            self.head_rank = self.ppn * self.rank/self.ppn
+            self.head_rank = self.rank//self.ppn
         elif (self.launch == "clustered"):
             self.ppn = size
             self.head_rank = 0
@@ -68,7 +68,7 @@ class SmartRedis_Sim_Client:
     # Set up training case and write metadata
     def setup_training_problem(self, coords: np.ndarray, 
                                data_info: dict) -> None:
-        if (self.rank%self.ppn == 0):
+        if self.rank==self.head_rank:
             # Run-check
             arr = np.array([1], dtype=np.int64)
             tic = perf_counter()
@@ -117,7 +117,7 @@ class SmartRedis_Sim_Client:
     
     # Signal to training sim is exiting
     def stop_train(self):
-        if (self.rank%self.ppn == 0):
+        if self.rank==self.head_rank:
             arr = np.array([0], dtype=np.int64)
             tic = perf_counter()
             self.client.put_tensor('sim-run', arr)
@@ -151,7 +151,7 @@ class SmartRedis_Sim_Client:
 
     # Send time step
     def send_step(self, step: int):
-        if (self.rank%self.ppn == 0):
+        if self.rank==self.head_rank:
             step_arr = np.array([step], dtype=np.int64)
             tic = perf_counter()
             self.client.put_tensor('step', step_arr)
@@ -163,7 +163,6 @@ class SmartRedis_Sim_Client:
         local_exists = 0
         tic = perf_counter()
         #if self.client.model_exists(self.model): local_exists = 1
-        #if local_exists==0:
         if self.client.key_exists(self.model): local_exists = 1
         toc = perf_counter()
         self.times["tot_meta"] += toc - tic
@@ -262,7 +261,7 @@ class SmartRedis_Train_Client:
     def __init__(self, cfg, rank: int, size: int):
         self.rank = rank
         self.size = size
-        self.launch = cfg.online.smartredis.launch
+        self.launch = cfg.online.launch
         self.db_nodes = cfg.online.smartredis.db_nodes
         self.ppn = cfg.ppn
         self.ppd = cfg.ppd
@@ -276,7 +275,7 @@ class SmartRedis_Train_Client:
         self.ndOut = None
         self.num_tot_tensors = None
         self.num_local_tensors = None
-        self.head_rank = None
+        self.sim_head_rank = None
         self.tensor_batch = None
         self.dataOverWr = None
 
@@ -288,6 +287,11 @@ class SmartRedis_Train_Client:
         }
         self.time_stats = {}
         self.train_array_sz = 0
+
+        if self.launch == "colocated":
+            self.head_rank = self.rank//(self.ppn*self.ppd)
+        elif self.launch == "clustered":
+            self.head_rank = 0
 
     # Initialize client
     def init(self):
@@ -367,7 +371,7 @@ class SmartRedis_Train_Client:
         self.ndOut = self.ndTot - self.ndIn
         self.num_tot_tensors = dataSizeInfo[3]
         self.num_local_tensors = dataSizeInfo[4]
-        self.head_rank = dataSizeInfo[5]
+        self.sim_head_rank = dataSizeInfo[5]
         
         max_batch_size = int(self.num_local_tensors/(self.ppn*self.ppd))
         if (not self.global_shuffling):
@@ -399,7 +403,7 @@ class SmartRedis_Train_Client:
         self.client.delete_model(key)
 
     # Put model to DB
-    def put_model(self, key: str, model_bytes: io.Bytes,
+    def put_model(self, key: str, model_bytes: io.BytesIO,
                   device: Optional[str] = None) -> None:
         if key=='mlp' and device:
             self.client.set_model(key, model_bytes.getvalue(), 'TORCH', device)

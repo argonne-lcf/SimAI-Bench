@@ -100,8 +100,8 @@ def launch_coDB(cfg, nodelist, nNodes):
         if (cfg.train.config_name): ml_exe += f' --config-name {cfg.train.config_name}'
         ml_exe = ml_exe + f' ppn={cfg.run_args.mlprocs_pn}' \
                         + f' online.backend=smartredis' \
+                        + f' online.launch={cfg.database.deployment}' \
                         + f' online.simprocs={cfg.run_args.simprocs}' \
-                        + f' online.smartredis.launch={cfg.database.deployment}' \
                         + f' online.smartredis.db_nodes={cfg.run_args.db_nodes}'
         SSDB = colo_model.run_settings.env_vars['SSDB']
         if (cfg.database.launcher=='local'):
@@ -218,8 +218,8 @@ def launch_clDB(cfg, nodelist, nNodes):
         if (cfg.train.config_name): ml_exe += f' --config-name {cfg.train.config_name}'
         ml_exe = ml_exe + f' ppn={cfg.run_args.mlprocs_pn}' \
                         + f' online.backend=smartredis' \
+                        + f' online.launch={cfg.database.deployment}' \
                         + f' online.simprocs={cfg.run_args.simprocs}' \
-                        + f' online.smartredis.db_launch={cfg.database.deployment}' \
                         + f' online.smartredis.db_nodes={cfg.run_args.db_nodes}'
         if (cfg.database.launcher=='local'):
             ml_settings = RunSettings('python',
