@@ -1,5 +1,6 @@
 import sys
 import os, os.path
+import io
 from typing import Optional
 from time import perf_counter
 import logging
@@ -179,8 +180,8 @@ class SmartRedis_Sim_Client:
             inputs = np.expand_dims(inputs, axis=1)
         tic = perf_counter()
         if self.client.key_exists(f'{self.model}_bytes'):
-            model_bytes = self.client.get_bytes(self.model)
-            buffer = io.BytesIO(model_bytes)
+            buffer = self.client.get_bytes(self.model)
+            #buffer = io.BytesIO(model_bytes)
             model_jit = torch.jit.load(buffer, map_location='cpu')
             x = torch.from_numpy(inputs).type(torch.float32)
             if self.model=='mlp':
@@ -398,13 +399,13 @@ class SmartRedis_Train_Client:
         self.client.delete_model(key)
 
     # Put model to DB
-    def put_model(self, key: str, model_bytes: bytes,
+    def put_model(self, key: str, model_bytes: io.Bytes,
                   device: Optional[str] = None) -> None:
         if key=='mlp' and device:
-            self.client.set_model(key, model_bytes, 'TORCH', device)
-            self.put_value(f'{key}_bytes',1)
+            self.client.set_model(key, model_bytes.getvalue(), 'TORCH', device)
         else:
             self.client.put_bytes(key, model_bytes)
+            self.put_value(f'{key}_bytes',1)
 
     # Collect timing statistics across ranks
     def collect_stats(self, comm):

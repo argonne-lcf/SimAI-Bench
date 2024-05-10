@@ -32,7 +32,7 @@ def setup_online_dataloaders(cfg, comm, dataset, batch_size, split: List[float])
     generator = torch.Generator().manual_seed(12345)
     train_dataset, val_dataset = random_split(dataset, split, generator=generator)
  
-    if (cfg.online.smartredis.db_launch=="colocated"):
+    if (cfg.online.smartredis.launch=="colocated"):
         replicas = cfg.ppn*cfg.ppd
         rank_arg = comm.rankl
     else:
@@ -209,10 +209,9 @@ def onlineTrainLoop(cfg, comm, client, t_data, model, logger):
                 jit_model = model.module.script_model()
                 buffer = io.BytesIO()
                 torch.jit.save(jit_model, buffer)
-                model_bytes = buffer.getvalue()
                 if client.model_exists(cfg.model):
                     client.delete_model(cfg.model)
-                client.put_model(cfg.model, model_bytes,
+                client.put_model(cfg.model, buffer,
                                  device=cfg.online.smartredis.inference_device)
             if (comm.rank==0):
                 logger.info("Shared model checkpoint\n")

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set env
-source /eagle/datascience/balin/SimAI-Bench/env_ssim.sh
+#source /eagle/datascience/balin/SimAI-Bench/env_ssim.sh
 echo Loaded modules:
 module list
 
@@ -13,7 +13,7 @@ ML_EXE=$BASE_DIR/src/online_training/train/train.py
 DRIVER_CONFIG_PATH=$PWD/conf
 DRIVER_CONFIG_NAME="ssim_config_colocated"
 TRAIN_CONFIG_PATH=$PWD/conf
-TRAIN_CONFIG_NAME="train_config_mlp_small"
+TRAIN_CONFIG_NAME="train_config_mlp_small_tight"
 
 # Set up run
 NODES=$(cat $PBS_NODEFILE | wc -l)

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set env
-source /eagle/datascience/balin/SimAI-Bench/env_dragon.sh
+#source /eagle/datascience/balin/SimAI-Bench/env_dragon.sh
 echo Loaded modules:
 module list
 
