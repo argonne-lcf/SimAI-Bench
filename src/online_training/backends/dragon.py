@@ -39,7 +39,7 @@ class Dragon_Sim_Client:
         self.time_stats = {}
 
         if (self.launch == "colocated"):
-            self.head_rank = self.ppn * self.rank/self.ppn
+            self.head_rank = self.rank//self.ppn
         elif (self.launch == "clustered"):
             self.ppn = size
             self.head_rank = 0
@@ -76,8 +76,7 @@ class Dragon_Sim_Client:
     # Set up training case and write metadata
     def setup_training_problem(self, coords: np.ndarray, 
                                data_info: dict) -> None:
-        #if (self.rank%self.ppn == 0): # reactive when can do a colocated interactio with dict
-        if self.rank==0:
+        if self.rank==self.head_rank:
             # Run-check
             arr = np.array([1], dtype=np.int64)
             tic = perf_counter()
@@ -126,8 +125,7 @@ class Dragon_Sim_Client:
     
     # Signal to training sim is exiting
     def stop_train(self):
-        #if (self.rank%self.ppn == 0): # reactivate for colocated interaction with dict
-        if self.rank==0:
+        if self.rank==self.head_rank:
             arr = np.array([0], dtype=np.int64)
             tic = perf_counter()
             self.put('sim-run', arr)
@@ -163,8 +161,7 @@ class Dragon_Sim_Client:
 
     # Send time step
     def send_step(self, step: int):
-        #if (self.rank%self.ppn == 0):
-        if self.rank==0:
+        if self.rank==self.head_rank:
             step_arr = np.array([step], dtype=np.int64)
             tic = perf_counter()
             self.put('step', step_arr)
@@ -278,7 +275,7 @@ class Dragon_Train_Client:
         self.ndOut = None
         self.num_tot_tensors = None
         self.num_local_tensors = None
-        self.head_rank = None
+        self.sim_head_rank = None
         self.tensor_batch = None
         self.dataOverWr = None
 
@@ -290,6 +287,11 @@ class Dragon_Train_Client:
         }
         self.time_stats = {}
         self.train_array_sz = 0
+
+        if self.launch == "colocated":
+            self.head_rank = self.rank//(self.ppn*self.ppd)
+        elif self.launch == "clustered":
+            self.head_rank = 0
 
     # Initialize client
     def init(self):
@@ -361,7 +363,7 @@ class Dragon_Train_Client:
         self.ndOut = self.ndTot - self.ndIn
         self.num_tot_tensors = dataSizeInfo[3]
         self.num_local_tensors = dataSizeInfo[4]
-        self.head_rank = dataSizeInfo[5]
+        self.sim_head_rank = dataSizeInfo[5]
         
         max_batch_size = int(self.num_local_tensors/(self.ppn*self.ppd))
         if (not self.global_shuffling):
@@ -393,9 +395,9 @@ class Dragon_Train_Client:
         del self._dd[key]
 
     # Put model to DB
-    def put_model(self, key: str, model_bytes: bytes,
+    def put_model(self, key: str, model_bytes: io.BytesIO,
                   device: Optional[str] = None) -> None:
-        self._dd[key] = model_bytes
+        self._dd[key] = model_bytes.getvalue()
         
 
     # Collect timing statistics across ranks

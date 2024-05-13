@@ -137,7 +137,7 @@ class MPIFileHandler(logging.FileHandler):
         except Exception:
             self.handleError(record)
                                                          
-    def close(self):                                                            
+    def close(self):
         if self.stream:                                                         
             self.stream.Sync()                                                  
             self.stream.Close()                                                 

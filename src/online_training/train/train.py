@@ -51,11 +51,14 @@ def main(cfg: DictConfig):
     date = datetime.datetime.now().strftime('%d.%m.%y_%H.%M') if comm.rank==0 else None
     date = comm.comm.bcast(date, root=0)
     comm.comm.Barrier()
-    mh = utils.MPIFileHandler(f"train_{date}.log")                       
     #formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
     formatter = logging.Formatter('%(message)s')
+    mh = utils.MPIFileHandler(f"train_{date}.log", comm=comm.comm)                       
     mh.setFormatter(formatter)
     logger.addHandler(mh)
+    #fh = logging.FileHandler(f'{os.getcwd()}/train_{date}.log')
+    #fh.setFormatter(formatter)
+    #if comm.rank==0: logger.addHandler(fh)
     
     logger.debug(f"Hello from MPI rank {comm.rank}/{comm.size} and local rank {comm.rankl}")
 

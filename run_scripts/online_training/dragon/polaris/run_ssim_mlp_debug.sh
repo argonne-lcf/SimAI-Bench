@@ -31,9 +31,9 @@ echo
 # Sent env vars
 
 # Run
-SIM_ARGS="--backend\=dragon --model\=mlp --problem_size\=debug --launch\=colocated --ppn\=${SIM_RANKS} --tolerance\=0.002"
+SIM_ARGS="--backend\=dragon --model\=mlp --problem_size\=debug --launch\=clustered --ppn\=${SIM_RANKS} --tolerance\=0.002"
 dragon $DRIVER --config-path $DRIVER_CONFIG_PATH \
-    deployment="colocated" \
+    deployment="mixed" \
     sim.executable=$SIM_EXE sim.arguments="${SIM_ARGS}" \
     sim.procs=${SIM_RANKS} sim.procs_pn=${SIM_PROCS_PER_NODE} \
     train.executable=$ML_EXE train.config_path=${TRAIN_CONFIG_PATH} train.config_name=${TRAIN_CONFIG_NAME} \

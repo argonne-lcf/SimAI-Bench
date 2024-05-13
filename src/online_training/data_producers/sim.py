@@ -1,4 +1,5 @@
 import sys
+import os
 from argparse import ArgumentParser
 from time import perf_counter, sleep, time
 from datetime import datetime
@@ -61,11 +62,14 @@ def main():
     date = datetime.now().strftime('%d.%m.%y_%H.%M') if rank==0 else None
     date = comm.bcast(date, root=0)
     comm.Barrier()
-    mh = utils.MPIFileHandler(f"sim_{date}.log")                                        
     #formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
     formatter = logging.Formatter('%(message)s')
+    mh = utils.MPIFileHandler(f"sim_{date}.log", comm=comm)                                        
     mh.setFormatter(formatter)
     logger.addHandler(mh)
+    #fh = logging.FileHandler(f'{os.getcwd()}/sim_{date}.log')
+    #fh.setFormatter(formatter)
+    #if rank==0: logger.addHandler(fh)
 
     rankl = rank % args.ppn
     logger.debug(f"Hello from MPI rank {rank}/{size}, local rank {rankl} and node {name}")

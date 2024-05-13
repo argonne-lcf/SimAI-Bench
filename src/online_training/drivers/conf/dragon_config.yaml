@@ -1,6 +1,6 @@
 # Workflow config
 scheduler: "pbs" # pbs,local - job scheduler
-deployment: "colocated" # colocated,clustered - deployment approach for workflow components
+deployment: "mixed" # colocated,clustered,mixed - deployment approach for workflow components
 
 # Dragon Distributed Dictionary config
 dict:

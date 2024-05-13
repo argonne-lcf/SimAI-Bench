@@ -72,9 +72,10 @@ def read_error(stderr_conn: Connection) -> str:
     return output
 
 ## Colocated launch
-def launch_colocated(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
+def launch_mixed(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
     """
-    Launch the workflow with the colocated deployment
+    Launch the workflow with the mixed deployment (components are colocated on same nodes,
+    but data can still transfer across nodes to fill in DDict
 
     :param cfg: hydra config
     :type cfg: DictConfig
@@ -101,17 +102,18 @@ def launch_colocated(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
     sim_args_list.append(f'--dictionary={dd_serialized}')
     sim_run_dir = os.getcwd()
 
-    sim_grp = ProcessGroup(restart=False, pmi_enabled=True)
+    sim_grp = ProcessGroup(restart=False, pmi_enabled=True, ignore_error_on_exit=True)
     sim_grp.add_process(nproc=1, 
                     template=ProcessTemplate(target=sim_exe, 
                                              args=sim_args_list, 
                                              cwd=sim_run_dir, 
-                                             stdout=MSG_PIPE))
-    sim_grp.add_process(nproc=cfg.sim.procs - 1,
-                    template=ProcessTemplate(target=sim_exe, 
-                                             args=sim_args_list, 
-                                             cwd=sim_run_dir, 
                                              stdout=MSG_DEVNULL))
+    if cfg.sim.procs>1:
+        sim_grp.add_process(nproc=cfg.sim.procs - 1,
+                        template=ProcessTemplate(target=sim_exe, 
+                                                 args=sim_args_list, 
+                                                 cwd=sim_run_dir, 
+                                                 stdout=MSG_DEVNULL))
     sim_grp.init()
     sim_grp.start()
     print('Done\n', flush=True)
@@ -126,39 +128,40 @@ def launch_colocated(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
     ml_args_list.extend([f'ppn={cfg.train.procs_pn}',
                          f'online.simprocs={cfg.sim.procs}',
                          f'online.backend=dragon',
-                         f'online.launch={cfg.deployment}'],
+                         f'online.launch=clustered'],
                          )
     dd_serialized_nice = dd_serialized.replace('=','\=')
     ml_args_list.append(f'online.dragon.dictionary={dd_serialized_nice}')
     ml_run_dir = os.getcwd()
 
-    ml_grp = ProcessGroup(restart=False, pmi_enabled=True)
+    ml_grp = ProcessGroup(restart=False, pmi_enabled=True, ignore_error_on_exit=True)
     ml_grp.add_process(nproc=1, 
                     template=ProcessTemplate(target=ml_exe, 
                                              args=ml_args_list, 
                                              cwd=ml_run_dir, 
-                                             stdout=MSG_PIPE,
-                                             stderr=MSG_PIPE))
-    ml_grp.add_process(nproc=cfg.train.procs - 1,
-                    template=ProcessTemplate(target=ml_exe, 
-                                             args=ml_args_list, 
-                                             cwd=ml_run_dir, 
-                                             stdout=MSG_DEVNULL))
+                                             stdout=MSG_DEVNULL,
+                                             stderr=MSG_DEVNULL))
+    if cfg.train.procs>1:
+        ml_grp.add_process(nproc=cfg.train.procs - 1,
+                        template=ProcessTemplate(target=ml_exe, 
+                                                 args=ml_args_list, 
+                                                 cwd=ml_run_dir, 
+                                                 stdout=MSG_DEVNULL))
     ml_grp.init()
     ml_grp.start()
     print('Done\n', flush=True)
 
     # Read output
-    #group_procs = [Process(None, ident=puid) for puid in sim_grp.puids]
-    #for proc in group_procs:
-    #    if proc.stdout_conn:
-    #        std_out = read_output(proc.stdout_conn)
-    #        print(std_out, flush=True)
+    group_procs = [Process(None, ident=puid) for puid in sim_grp.puids]
+    for proc in group_procs:
+        if proc.stdout_conn:
+            std_out = read_output(proc.stdout_conn)
+            print(std_out, flush=True)
     group_procs = [Process(None, ident=puid) for puid in ml_grp.puids]
     for proc in group_procs:
-        #if proc.stdout_conn:
-        #    std_out = read_output(proc.stdout_conn)
-        #    print(std_out, flush=True)
+        if proc.stdout_conn:
+            std_out = read_output(proc.stdout_conn)
+            print(std_out, flush=True)
         if proc.stderr_conn:
             std_err = read_error(proc.stderr_conn)
             print(std_err, flush=True)
@@ -181,8 +184,8 @@ def launch_clustered(cfg, dd, nodelist) -> None:
 def main(cfg: DictConfig):
     # Assertions
     assert cfg.scheduler=='pbs' or cfg.scheduler=='local', print("Only allowed schedulers at this time are pbs and local")
-    assert cfg.deployment == "colocated" or cfg.deployment == "clustered", \
-                    print("Deployment is either colocated or clustered")
+    assert cfg.deployment == "colocated" or cfg.deployment == "clustered" or cfg.deployment == "mixed", \
+                    print("Deployment is either colocated, clustered or mixed")
 
     # Get nodes of this allocation
     nodelist = parseNodeList(cfg.scheduler)
@@ -199,8 +202,9 @@ def main(cfg: DictConfig):
     elif (cfg.deployment == "clustered"):
         print(f"\nRunning with the {cfg.deployment} deployment \n")
         launch_clustered(cfg, dd, nodelist)
-    else:
-        print("\nERROR: Deployment is either colocated or clustered\n")
+    elif (cfg.deployment == "mixed"):
+        print(f"\nRunning with the {cfg.deployment} deployment \n")
+        launch_mixed(cfg, dd, nodelist)
 
     # Close the DDict and quit
     dd.destroy()

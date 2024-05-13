@@ -1,12 +1,12 @@
 # Workflow config
 scheduler: "pbs" # pbs,local - job scheduler
-deployment: "colocated" # colocated,clustered - deployment approach for workflow components
+deployment: "mixed" # colocated,clustered - deployment approach for workflow components
 
 # Dragon Distributed Dictionary config
 dict:
     num_nodes: 1 # int - number of nodes across which to launch the dictionary
     managers_per_node: 1 # int - number of dictionary managers per node
-    total_mem_size: 8 # int - total managed memory size for dictionary in GB
+    total_mem_size: 64 # int - total managed memory size for dictionary in GB
 
 # Simulation config
 sim:
