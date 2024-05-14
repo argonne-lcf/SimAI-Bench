@@ -4,7 +4,7 @@
 ##### training driver to assist in learning and evaluation model performance.
 #####
 import sys
-from time import perf_counter, sleep
+from time import perf_counter
 
 import torch
 import torch.optim as optim

@@ -10,7 +10,7 @@ reproducibility: True # True, False - make training deterministic
 
 # Training hyperparameters config
 epochs: 100 # integer - max number of epochs for training
-mini_batch: 32 # integer - mini batch size for SGD update
+mini_batch: 64 # integer - mini batch size for SGD update
 learning_rate: 0.001 # float - serial leranring rate
 tolerance: 1.0e-4 # float - convergence tolerance of validation loss
 validation_split: 0.0 # float - percentage of data kept for validation
@@ -23,18 +23,18 @@ save_db: False # True, False - save database contents at the end of trainint to 
 
 # Online train config
 online:
-    backend: "smartredis" # smartsim - descriptor for workflow driver
+    backend: "dragon" # smartredis,dragon - backend for client
     launch: "" # colocated,clustered - deployment method of workflow components
     global_shuffling: False # True, False - enforce shuffling of DB tensors at every epoch
     batch: 0 # integer - number of tensors to grab from database at once for global shuffling, 0: grab all tensors at once, recommended
     simprocs: 1 # int - number of MPI processes simulation is running with
-    checkpoints: 10 # int - frequency in epochs to share model checkpoint
+    checkpoints: 20 # int - frequency in epochs to share model checkpoint
     smartredis:
         db_nodes: 1 # int - number of nodes dabase is sharded across. Always 1 for colocated DB.
-        inference_device: "GPU:3" # CPU,GPU,GPU:# - device string for inference with RedisAI from data producer
+        inference_device: "" # CPU,GPU,GPU:# - device string for inference with RedisAI from data producer
     dragon:
         dictionary: "" # str - serialized dragon dictionary
- 
+
 # Model specific config
 mlp:
     inputs: 1 # integer - number of input features to the MLP model
