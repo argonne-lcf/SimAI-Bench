@@ -15,6 +15,25 @@ from dragon.infrastructure.policy import Policy
 from dragon.native.machine import cpu_count, current, System, Node
 
 
+## Define function to parse node list
+def parseNodeList(scheduler: str) -> List[str]:
+    """
+    Parse the node list provided by the scheduler
+
+    :param scheduler: scheduler descriptor
+    :type scheduler: str
+    :return: tuple with node list and number of nodes
+    :rtype: tuple
+    """
+    nodelist = []
+    if scheduler=='pbs':
+        hostfile = os.getenv('PBS_NODEFILE')
+        with open(hostfile) as file:
+            nodelist = file.readlines()
+            nodelist = [line.rstrip() for line in nodelist]
+            nodelist = [line.split('.')[0] for line in nodelist]
+    return nodelist
+
 ## Read output from ProcessGroup
 def read_output(stdout_conn: Connection) -> str:
     """Read stdout from the Dragon connection.
@@ -90,26 +109,102 @@ def launch_ProcessGroup(num_procs: int, num_procs_pn: int, nodelist,
     grp.join()
     grp.stop()
 
-## Colocated launch
-def launch_mixed(cfg: DictConfig, dd_serialized: str, nodelist: List[str]) -> None:
+## Clustered launch
+def launch_clustered(cfg: DictConfig, dd_serialized: str, sched_nodelist: List[str], dragon_nodelist: List[str]) -> None:
     """
-    Launch the workflow with the mixed deployment (components are colocated on same nodes,
-    but data can still transfer across nodes to fill in DDict
+    Launch the workflow with the clustered deployment (components are launched on separate set of nodes,
+    so data is always transferred across nodes to fill in DDict)
 
     :param cfg: hydra config
     :type cfg: DictConfig
     :param dd_serialized: serialized Dragon Distributed Dictionary
     :type dd_serialized: str
-    :param nodelist: node list provided by scheduler
-    :type nodelist: List[str]
+    :param sched_nodelist: node list provided by scheduler
+    :type sched_nodelist: List[str]
+    :param dragon_nodelist: node list provided by Dragon
+    :type dragon_nodelist: List[str]
     """
     # Print nodelist
     print(f"\nRunning on {len(nodelist)} total nodes")
-    print(nodelist, "\n")
+    dd_idx = range(cfg.dict.num_nodes)
+    sim_idx = range(cfg.dict.num_nodes, cfg.dict.num_nodes+cfg.sim.num_nodes)
+    ml_idx = range(cfg.dict.num_nodes+cfg.sim.num_nodes, cfg.dict.num_nodes+cfg.sim.num_nodes+cfg.train.num_nodes)
+    dd_nodelist = ','.join(dragon_nodelist[dd_idx])
+    sim_nodelist = ','.join(dragon_nodelist[sim_idx])
+    ml_nodelist = ','.join(dragon_nodelist[ml_idx])
+    print(f"Database running on {cfg.dict.num_nodes} nodes:")
+    print(sched_nodelist[dd_idx])
+    print(f"Simulatiom running on {cfg.sim.num_nodes} nodes:")
+    print(sched_nodelist[sim_idx])
+    print(f"ML running on {cfg.train.num_nodes} nodes:")
+    print(sched_nodelist[ml_idx], "\n")
+    sys.stdout.flush()
 
     global_policy = Policy(distribution=Policy.Distribution.BLOCK)
-    sim_nodelist = nodelist
-    ml_nodelist = nodelist
+
+    # Set up and launch the simulation component
+    print('Launching the simulation ...', flush=True)
+    sim_args_list = []
+    if (cfg.sim.executable.split("/")[-1].split('.')[-1]=='py'):
+        sim_exe = sys.executable
+        sim_args_list.append(cfg.sim.executable)
+    sim_args_list.extend(cfg.sim.arguments.split(' '))
+    sim_args_list.append(f'--dictionary={dd_serialized}')
+    sim_run_dir = os.getcwd()
+    sim_launch_proc = mp.Process(target=launch_ProcessGroup, args=(cfg.sim.procs, cfg.sim.procs_pn, sim_nodelist,
+                                                                   sim_exe, sim_args_list, sim_run_dir,
+                                                                   global_policy, list(cfg.sim.cpu_bind)))
+    sim_launch_proc.start()
+    print('Done\n', flush=True)
+
+    # Setup and launch the distributed training component
+    print('Launching the training ...', flush=True)
+    ml_args_list = []
+    ml_exe = sys.executable
+    ml_args_list.append(cfg.train.executable)
+    if (cfg.train.config_path): ml_args_list.append(f'--config-path={cfg.train.config_path}')
+    if (cfg.train.config_name): ml_args_list.append(f'--config-name={cfg.train.config_name}')
+    ml_args_list.extend([f'ppn={cfg.train.procs_pn}',
+                         f'online.simprocs={cfg.sim.procs}',
+                         f'online.backend=dragon',
+                         f'online.launch=clustered'],
+                         )
+    dd_serialized_nice = dd_serialized.replace('=','\=')
+    ml_args_list.append(f'online.dragon.dictionary={dd_serialized_nice}')
+    ml_run_dir = os.getcwd()
+    ml_launch_proc = mp.Process(target=launch_ProcessGroup, args=(cfg.train.procs, cfg.train.procs_pn, ml_nodelist,
+                                                                  ml_exe, ml_args_list, ml_run_dir,
+                                                                  global_policy, list(cfg.train.cpu_bind)))
+    ml_launch_proc.start()
+    print('Done\n', flush=True)
+
+    # Join both simulation and training
+    ml_launch_proc.join()
+    sim_launch_proc.join()
+    print('Exiting driver ...', flush=True)
+
+## Mixed launch
+def launch_mixed(cfg: DictConfig, dd_serialized: str, sched_nodelist: List[str], dragon_nodelist: List[str]) -> None:
+    """
+    Launch the workflow with the mixed deployment (components are colocated on same nodes,
+    but data can still transfer across nodes to fill in DDict)
+
+    :param cfg: hydra config
+    :type cfg: DictConfig
+    :param dd_serialized: serialized Dragon Distributed Dictionary
+    :type dd_serialized: str
+    :param sched_nodelist: node list provided by scheduler
+    :type sched_nodelist: List[str]
+    :param dragon_nodelist: node list provided by Dragon
+    :type dragon_nodelist: List[str]
+    """
+    # Print nodelist
+    print(f"\nRunning on {len(sched_nodelist)} total nodes")
+    print(sched_nodelist, "\n")
+
+    global_policy = Policy(distribution=Policy.Distribution.BLOCK)
+    sim_nodelist = dragon_nodelist
+    ml_nodelist = dragon_nodelist
 
     # Set up and launch the simulation component
     print('Launching the simulation ...', flush=True)
@@ -153,10 +248,6 @@ def launch_mixed(cfg: DictConfig, dd_serialized: str, nodelist: List[str]) -> No
     print('Exiting driver ...', flush=True)
 
 
-## Clustered DB launch
-def launch_clustered(cfg, dd, nodelist) -> None:
-    print("Not implemented yet")
-
 
 ## Main function
 @hydra.main(version_base=None, config_path="./conf", config_name="dragon_config")
@@ -167,9 +258,10 @@ def main(cfg: DictConfig):
                     print("Deployment is either colocated, clustered or mixed")
 
     # Get information on this allocation
+    sched_nodelist = parseNodeList(cfg.scheduler)
     alloc = System()
     num_tot_nodes = alloc.nnodes()
-    nodelist = alloc.nodes
+    dragon_nodelist = alloc.nodes
 
     # Start the Dragon Distributed Dictionary (DDict)
     mp.set_start_method("dragon")
@@ -184,10 +276,10 @@ def main(cfg: DictConfig):
         launch_colocated(cfg, dd_serialized, nodelist)
     elif (cfg.deployment == "clustered"):
         print(f"\nRunning with the {cfg.deployment} deployment \n")
-        launch_clustered(cfg, dd_serialized, nodelist)
+        launch_clustered(cfg, dd_serialized, sched_nodelist, dragon_nodelist)
     elif (cfg.deployment == "mixed"):
         print(f"\nRunning with the {cfg.deployment} deployment \n")
-        launch_mixed(cfg, dd_serialized, nodelist)
+        launch_mixed(cfg, dd_serialized, sched_nodelist, dragon_nodelist)
 
     # Close the DDict and quit
     dd.destroy()
