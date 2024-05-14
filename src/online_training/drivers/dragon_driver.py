@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 from omegaconf import DictConfig, OmegaConf
 import hydra
 
@@ -11,25 +11,9 @@ from dragon.data.ddict.ddict import DDict
 from dragon.native.process_group import ProcessGroup
 from dragon.native.process import Process, ProcessTemplate, MSG_PIPE, MSG_DEVNULL
 from dragon.infrastructure.connection import Connection
+from dragon.infrastructure.policy import Policy
+from dragon.native.machine import cpu_count, current, System, Node
 
-## Define function to parse node list
-def parseNodeList(scheduler: str) -> List[str]:
-    """
-    Parse the node list provided by the scheduler
-
-    :param scheduler: scheduler descriptor
-    :type scheduler: str
-    :return: tuple with node list and number of nodes
-    :rtype: tuple
-    """
-    nodelist = []
-    if scheduler=='pbs':
-        hostfile = os.getenv('PBS_NODEFILE')
-        with open(hostfile) as file:
-            nodelist = file.readlines()
-            nodelist = [line.rstrip() for line in nodelist]
-            nodelist = [line.split('.')[0] for line in nodelist]
-    return nodelist
 
 ## Read output from ProcessGroup
 def read_output(stdout_conn: Connection) -> str:
@@ -71,26 +55,61 @@ def read_error(stderr_conn: Connection) -> str:
         stderr_conn.close()
     return output
 
+## Launch a process group
+def launch_ProcessGroup(num_procs: int, num_procs_pn: int, nodelist,
+                        exe: str, args_list: List[str], run_dir: str, 
+                        global_policy: Optional[Policy] = None,
+                        cpu_bind: Optional[List[int]] = None) -> None:
+    """
+    Launch a ProcessGroup
+    """ 
+    grp = ProcessGroup(restart=False, pmi_enabled=True, 
+                       ignore_error_on_exit=True, policy=global_policy)
+    for node_num in range(len(nodelist)):   
+        node_name = Node(nodelist[node_num]).hostname
+        if cpu_bind is not None and len(cpu_bind)>0:
+            for proc in range(num_procs_pn):
+                local_policy = Policy(placement=Policy.Placement.HOST_NAME,host_name=node_name,
+                                      cpu_affinity=[cpu_bind[proc]])
+                grp.add_process(nproc=1, 
+                                template=ProcessTemplate(target=exe, 
+                                                         args=args_list, 
+                                                         cwd=run_dir,
+                                                         policy=local_policy, 
+                                                         stdout=MSG_DEVNULL))
+        else:
+            local_policy = Policy(placement=Policy.Placement.HOST_NAME,host_name=node_name)
+            grp.add_process(nproc=num_procs_pn, 
+                            template=ProcessTemplate(target=exe, 
+                                                     args=args_list, 
+                                                     cwd=run_dir,
+                                                     policy=local_policy, 
+                                                     stdout=MSG_DEVNULL))
+    grp.init()
+    grp.start()
+    grp.join()
+    grp.stop()
+
 ## Colocated launch
-def launch_mixed(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
+def launch_mixed(cfg: DictConfig, dd_serialized: str, nodelist: List[str]) -> None:
     """
     Launch the workflow with the mixed deployment (components are colocated on same nodes,
     but data can still transfer across nodes to fill in DDict
 
     :param cfg: hydra config
     :type cfg: DictConfig
-    :param dd: Dragon Distributed Dictionary
-    :type dd: DDict
+    :param dd_serialized: serialized Dragon Distributed Dictionary
+    :type dd_serialized: str
     :param nodelist: node list provided by scheduler
     :type nodelist: List[str]
     """
     # Print nodelist
-    if (nodelist is not None):
-        print(f"\nRunning on {len(nodelist)} total nodes")
-        print(nodelist, "\n")
-        hosts = ','.join(nodelist)
+    print(f"\nRunning on {len(nodelist)} total nodes")
+    print(nodelist, "\n")
 
-    dd_serialized = dd.serialize()
+    global_policy = Policy(distribution=Policy.Distribution.BLOCK)
+    sim_nodelist = nodelist
+    ml_nodelist = nodelist
 
     # Set up and launch the simulation component
     print('Launching the simulation ...', flush=True)
@@ -101,21 +120,10 @@ def launch_mixed(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
     sim_args_list.extend(cfg.sim.arguments.split(' '))
     sim_args_list.append(f'--dictionary={dd_serialized}')
     sim_run_dir = os.getcwd()
-
-    sim_grp = ProcessGroup(restart=False, pmi_enabled=True, ignore_error_on_exit=True)
-    sim_grp.add_process(nproc=1, 
-                    template=ProcessTemplate(target=sim_exe, 
-                                             args=sim_args_list, 
-                                             cwd=sim_run_dir, 
-                                             stdout=MSG_DEVNULL))
-    if cfg.sim.procs>1:
-        sim_grp.add_process(nproc=cfg.sim.procs - 1,
-                        template=ProcessTemplate(target=sim_exe, 
-                                                 args=sim_args_list, 
-                                                 cwd=sim_run_dir, 
-                                                 stdout=MSG_DEVNULL))
-    sim_grp.init()
-    sim_grp.start()
+    sim_launch_proc = mp.Process(target=launch_ProcessGroup, args=(cfg.sim.procs, cfg.sim.procs_pn, sim_nodelist, 
+                                                                   sim_exe, sim_args_list, sim_run_dir,
+                                                                   global_policy, list(cfg.sim.cpu_bind)))
+    sim_launch_proc.start()
     print('Done\n', flush=True)
 
     # Setup and launch the distributed training component
@@ -133,44 +141,15 @@ def launch_mixed(cfg: DictConfig, dd: DDict, nodelist: List[str]) -> None:
     dd_serialized_nice = dd_serialized.replace('=','\=')
     ml_args_list.append(f'online.dragon.dictionary={dd_serialized_nice}')
     ml_run_dir = os.getcwd()
-
-    ml_grp = ProcessGroup(restart=False, pmi_enabled=True, ignore_error_on_exit=True)
-    ml_grp.add_process(nproc=1, 
-                    template=ProcessTemplate(target=ml_exe, 
-                                             args=ml_args_list, 
-                                             cwd=ml_run_dir, 
-                                             stdout=MSG_DEVNULL,
-                                             stderr=MSG_DEVNULL))
-    if cfg.train.procs>1:
-        ml_grp.add_process(nproc=cfg.train.procs - 1,
-                        template=ProcessTemplate(target=ml_exe, 
-                                                 args=ml_args_list, 
-                                                 cwd=ml_run_dir, 
-                                                 stdout=MSG_DEVNULL))
-    ml_grp.init()
-    ml_grp.start()
+    ml_launch_proc = mp.Process(target=launch_ProcessGroup, args=(cfg.train.procs, cfg.train.procs_pn, ml_nodelist,
+                                                                  ml_exe, ml_args_list, ml_run_dir,
+                                                                  global_policy, list(cfg.train.cpu_bind)))
+    ml_launch_proc.start()
     print('Done\n', flush=True)
 
-    # Read output
-    group_procs = [Process(None, ident=puid) for puid in sim_grp.puids]
-    for proc in group_procs:
-        if proc.stdout_conn:
-            std_out = read_output(proc.stdout_conn)
-            print(std_out, flush=True)
-    group_procs = [Process(None, ident=puid) for puid in ml_grp.puids]
-    for proc in group_procs:
-        if proc.stdout_conn:
-            std_out = read_output(proc.stdout_conn)
-            print(std_out, flush=True)
-        if proc.stderr_conn:
-            std_err = read_error(proc.stderr_conn)
-            print(std_err, flush=True)
-
     # Join both simulation and training
-    ml_grp.join()
-    ml_grp.stop()
-    sim_grp.join()
-    sim_grp.stop()
+    ml_launch_proc.join()
+    sim_launch_proc.join()
     print('Exiting driver ...', flush=True)
 
 
@@ -187,24 +166,28 @@ def main(cfg: DictConfig):
     assert cfg.deployment == "colocated" or cfg.deployment == "clustered" or cfg.deployment == "mixed", \
                     print("Deployment is either colocated, clustered or mixed")
 
-    # Get nodes of this allocation
-    nodelist = parseNodeList(cfg.scheduler)
+    # Get information on this allocation
+    alloc = System()
+    num_tot_nodes = alloc.nnodes()
+    nodelist = alloc.nodes
 
     # Start the Dragon Distributed Dictionary (DDict)
     mp.set_start_method("dragon")
     total_mem_size = cfg.dict.total_mem_size * (1024*1024*1024)
-    dd = DDict(cfg.dict.managers_per_node, cfg.dict.num_nodes, total_mem_size)
+    dd_policy = Policy(cpu_affinity=list(cfg.dict.cpu_bind)) if cfg.dict.cpu_bind else None
+    dd = DDict(cfg.dict.managers_per_node, cfg.dict.num_nodes, total_mem_size, policy=dd_policy)
     print("Launched the Dragon Dictionary \n", flush=True)
     
+    dd_serialized = dd.serialize()
     if (cfg.deployment == "colocated"):
         print(f"Running with the {cfg.deployment} deployment \n")
-        launch_colocated(cfg, dd, nodelist)
+        launch_colocated(cfg, dd_serialized, nodelist)
     elif (cfg.deployment == "clustered"):
         print(f"\nRunning with the {cfg.deployment} deployment \n")
-        launch_clustered(cfg, dd, nodelist)
+        launch_clustered(cfg, dd_serialized, nodelist)
     elif (cfg.deployment == "mixed"):
         print(f"\nRunning with the {cfg.deployment} deployment \n")
-        launch_mixed(cfg, dd, nodelist)
+        launch_mixed(cfg, dd_serialized, nodelist)
 
     # Close the DDict and quit
     dd.destroy()

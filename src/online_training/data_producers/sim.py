@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 from time import perf_counter, sleep, time
 from datetime import datetime
 import logging
+import psutil
 
 import mpi4py
 mpi4py.rc.initialize = False
@@ -72,7 +73,10 @@ def main():
     #if rank==0: logger.addHandler(fh)
 
     rankl = rank % args.ppn
-    logger.debug(f"Hello from MPI rank {rank}/{size}, local rank {rankl} and node {name}")
+    if args.logging=='debug':
+        p = psutil.Process()
+        logger.debug(f"Hello from MPI rank {rank}/{size}, local rank {rankl}, " \
+                     +f"core {p.cpu_affinity()}, and node {name}")
     if rank==0:
         logger.info(f'Running with {args.db_nodes} DB nodes')
         logger.info(f'and with {args.ppn} processes per node \n')

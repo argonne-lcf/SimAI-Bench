@@ -9,6 +9,7 @@ import random
 import datetime
 import logging
 import socket
+import psutil
 
 # Import MPI before torch to avoid error
 import mpi4py
@@ -60,7 +61,10 @@ def main(cfg: DictConfig):
     #fh.setFormatter(formatter)
     #if comm.rank==0: logger.addHandler(fh)
     
-    logger.debug(f"Hello from MPI rank {comm.rank}/{comm.size} and local rank {comm.rankl}")
+    if cfg.logging=='debug':
+        p = psutil.Process()
+        logger.debug(f"Hello from MPI rank {comm.rank}/{comm.size}, local rank {comm.rankl}, " \
+                     +f"core {p.cpu_affinity()}, and node {comm.name}")
 
     # Intel imports
     try:

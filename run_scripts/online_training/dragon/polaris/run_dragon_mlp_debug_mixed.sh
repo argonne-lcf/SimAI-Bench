@@ -11,6 +11,7 @@ DRIVER=$BASE_DIR/src/online_training/drivers/dragon_driver.py
 SIM_EXE=$BASE_DIR/src/online_training/data_producers/sim.py
 ML_EXE=$BASE_DIR/src/online_training/train/train.py
 DRIVER_CONFIG_PATH=$PWD/conf
+DRIVER_CONFIG_NAME="dragon_config_mlp"
 TRAIN_CONFIG_PATH=$PWD/conf
 TRAIN_CONFIG_NAME="train_config_mlp_debug"
 
@@ -32,8 +33,8 @@ echo
 
 # Run
 SIM_ARGS="--backend\=dragon --model\=mlp --problem_size\=debug --launch\=clustered --ppn\=${SIM_RANKS} --tolerance\=0.002"
-dragon $DRIVER --config-path $DRIVER_CONFIG_PATH \
-    deployment="mixed" \
+dragon $DRIVER --config-path $DRIVER_CONFIG_PATH --config-name $DRIVER_CONFIG_NAME \
+    deployment="mixed" dict.num_nodes=$NODES \
     sim.executable=$SIM_EXE sim.arguments="${SIM_ARGS}" \
     sim.procs=${SIM_RANKS} sim.procs_pn=${SIM_PROCS_PER_NODE} \
     train.executable=$ML_EXE train.config_path=${TRAIN_CONFIG_PATH} train.config_name=${TRAIN_CONFIG_NAME} \
