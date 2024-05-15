@@ -51,9 +51,9 @@ def main():
     parser.add_argument('--ppn', default=4, type=int, help='Number of processes per node')
     parser.add_argument('--logging', default='debug', help='Level of performance logging (debug, info)')
     parser.add_argument('--train_interval', type=int, default=5, help='Time step interval used to sync with ML training')
-    parser.add_argument('--launch', default="colocated", type=str, help='Database deployment (colocated, clustered)')
-    parser.add_argument('--db_nodes', default=1, type=int, help='Number of database nodes')
-    parser.add_argument('--db_max_mem_size', default=1, type=float, help='Maximum size of DB in GB')
+    parser.add_argument('--launch', default="colocated", type=str, help='Workflow deployment (colocated, clustered)')
+    parser.add_argument('--db_nodes', default=1, type=int, help='Number of database nodes if using SmartSim')
+    parser.add_argument('--db_max_mem_size', default=1, type=float, help='Maximum size of database in GB')
     args = parser.parse_args()
     
     # Set up logging
@@ -78,7 +78,7 @@ def main():
         logger.debug(f"Hello from MPI rank {rank}/{size}, local rank {rankl}, " \
                      +f"core {p.cpu_affinity()}, and node {name}")
     if rank==0:
-        logger.info(f'Running with {args.db_nodes} DB nodes')
+        logger.info(f'Running with {args.launch} deployment ')
         logger.info(f'and with {args.ppn} processes per node \n')
 
     # Initialize client
@@ -141,7 +141,7 @@ def main():
                 client.send_step(step)
             else:
                 if (rank==0):
-                    logger.warning(f'\tOut of memory in DB, did not send training data')
+                    logger.warning(f'\tOut of memory in staging area, did not send training data')
 
             # Exit if model has converged to tolerence for 5 consecutive checks
             if success>=5: 

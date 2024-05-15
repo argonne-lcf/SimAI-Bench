@@ -17,18 +17,12 @@ TRAIN_CONFIG_NAME="train_config_gnn_debug"
 
 # Set up run
 NODES=$(cat $PBS_NODEFILE | wc -l)
-DICT_NODES=1
-SIM_NODES=1
 SIM_PROCS_PER_NODE=2
-SIM_RANKS=$((SIM_NODES * SIM_PROCS_PER_NODE))
-ML_NODES=1
+SIM_RANKS=$((NODES * SIM_PROCS_PER_NODE))
 ML_PROCS_PER_NODE=2
-ML_RANKS=$((ML_NODES * ML_PROCS_PER_NODE))
+ML_RANKS=$((NODES * ML_PROCS_PER_NODE))
 JOBID=$(echo $PBS_JOBID | awk '{split($1,a,"."); print a[1]}')
-echo Number of total nodes: $NODES
-echo Number of dictionary nodes: $DICT_NODES
-echo Number of simulation nodes: $SIM_NODES
-echo Number of ML training nodes: $ML_NODES
+echo Number of nodes: $NODES
 echo Number of simulation ranks per node: $SIM_PROCS_PER_NODE
 echo Number of simulation total ranks: $SIM_RANKS
 echo Number of ML ranks per node: $ML_PROCS_PER_NODE
@@ -41,7 +35,6 @@ echo
 SIM_ARGS="--backend\=dragon --model\=gnn --problem_size\=debug --launch\=colocated --ppn\=${SIM_RANKS} --tolerance\=0.002"
 dragon $DRIVER --config-path $DRIVER_CONFIG_PATH --config-name $DRIVER_CONFIG_NAME \
     deployment="colocated" \
-    dict.num_nodes=$DICT_NODES sim.num_nodes=$SIM_NODES train.num_nodes=$ML_NODES \
     sim.executable=$SIM_EXE sim.arguments="${SIM_ARGS}" \
     sim.procs=${SIM_RANKS} sim.procs_pn=${SIM_PROCS_PER_NODE} \
     train.executable=$ML_EXE train.config_path=${TRAIN_CONFIG_PATH} train.config_name=${TRAIN_CONFIG_NAME} \
