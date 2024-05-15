@@ -78,7 +78,8 @@ def read_error(stderr_conn: Connection) -> str:
 def launch_ProcessGroup(num_procs: int, num_procs_pn: int, nodelist,
                         exe: str, args_list: List[str], run_dir: str, 
                         global_policy: Optional[Policy] = None,
-                        cpu_bind: Optional[List[int]] = None) -> None:
+                        cpu_bind: Optional[List[int]] = None,
+                        ddicts: Optional[List[str]] = None) -> None:
     """
     Launch a ProcessGroup
     """ 
@@ -86,6 +87,8 @@ def launch_ProcessGroup(num_procs: int, num_procs_pn: int, nodelist,
                        ignore_error_on_exit=True, policy=global_policy)
     for node_num in range(len(nodelist)):   
         node_name = Node(nodelist[node_num]).hostname
+        if ddicts is not None:
+            sim_args_list.append(f'--dictionary={ddicts[node_num]}')
         if cpu_bind is not None and len(cpu_bind)>0:
             for proc in range(num_procs_pn):
                 local_policy = Policy(placement=Policy.Placement.HOST_NAME,host_name=node_name,
@@ -109,6 +112,90 @@ def launch_ProcessGroup(num_procs: int, num_procs_pn: int, nodelist,
     grp.join()
     grp.stop()
 
+## Colocated launch
+def launch_colocated(cfg: DictConfig, sched_nodelist: List[str], dragon_nodelist: List[str]) -> None:
+    """
+    Launch the workflow with the colocated deployment (components are launched on same set of nodes,
+    and data is kept local to each node, no inter-node transfers)
+
+    :param cfg: hydra config
+    :type cfg: DictConfig
+    :param sched_nodelist: node list provided by scheduler
+    :type sched_nodelist: List[str]
+    :param dragon_nodelist: node list provided by Dragon
+    :type dragon_nodelist: List[str]
+    """
+    # Print nodelist
+    print(f"\nRunning on {len(sched_nodelist)} total nodes")
+    print(sched_nodelist, "\n")
+
+    global_policy = Policy(distribution=Policy.Distribution.BLOCK)
+    sim_nodelist = dragon_nodelist
+    ml_nodelist = dragon_nodelist
+ 
+    # Launch a DDict on each node
+    num_dd_nodes = 1
+    total_mem_size = cfg.dict.total_mem_size * (1024*1024*1024)
+    node_mem_size = total_mem_size//len(dragon_nodelist)
+    ddicts = {}
+    ddicts_serialized = []
+    for host in dragon_nodelist:
+        with Policy(placement=Policy.Placement.HOST_NAME, host_name=host):
+            dd = DDict(cfg.dict.managers_per_node, num_dd_nodes, node_mem_size)
+            ddicts[host] = dd
+            ddicts_serialized.append(dd.serialize())
+    print('Launched the dictionaries on all the nodes \n', flush=True)
+
+    # Set up and launch the simulation component
+    print('Launching the simulation ...', flush=True)
+    sim_args_list = []
+    if (cfg.sim.executable.split("/")[-1].split('.')[-1]=='py'):
+        sim_exe = sys.executable
+        sim_args_list.append(cfg.sim.executable)
+    sim_args_list.extend(cfg.sim.arguments.split(' '))
+    #sim_args_list.append(f'--dictionary={dd_serialized}')
+    sim_run_dir = os.getcwd()
+    sim_launch_proc = mp.Process(target=launch_ProcessGroup, args=(cfg.sim.procs, cfg.sim.procs_pn, sim_nodelist,
+                                                                   sim_exe, sim_args_list, sim_run_dir,
+                                                                   global_policy, list(cfg.sim.cpu_bind),
+                                                                   ddicts_serialized))
+    sim_launch_proc.start()
+    print('Done\n', flush=True) 
+
+    # Setup and launch the distributed training component
+    print('Launching the training ...', flush=True)
+    ml_args_list = []
+    ml_exe = sys.executable
+    ml_args_list.append(cfg.train.executable)
+    if (cfg.train.config_path): ml_args_list.append(f'--config-path={cfg.train.config_path}')
+    if (cfg.train.config_name): ml_args_list.append(f'--config-name={cfg.train.config_name}')
+    ml_args_list.extend([f'ppn={cfg.train.procs_pn}',
+                         f'online.simprocs={cfg.sim.procs}',
+                         f'online.backend=dragon',
+                         f'online.launch=colocated'],
+                         )
+    ddicts_serialized_nice = [dd_tmp.replace('=','\=') for dd_tmp in ddicts_serialized]
+    #ml_args_list.append(f'online.dragon.dictionary={dd_serialized_nice}')
+    ml_run_dir = os.getcwd()
+    ml_launch_proc = mp.Process(target=launch_ProcessGroup, args=(cfg.train.procs, cfg.train.procs_pn, ml_nodelist,
+                                                                  ml_exe, ml_args_list, ml_run_dir,
+                                                                  global_policy, list(cfg.train.cpu_bind),
+                                                                  ddicts_serialized_nice))
+    ml_launch_proc.start()
+    print('Done\n', flush=True)
+
+    # Join both simulation and training
+    ml_launch_proc.join()
+    sim_launch_proc.join()
+    print('Joined simulation and training \n', flush=True)
+
+    # Destroy all the DDicts
+    for host in dragon_nodelist:
+        dd = ddicts[host]
+        dd.destroy()
+    print('Destroyed all dictionaries \n', flush=True)
+    print('Exiting launcher ...', flush=True) 
+
 ## Clustered launch
 def launch_clustered(cfg: DictConfig, dd_serialized: str, sched_nodelist: List[str], dragon_nodelist: List[str]) -> None:
     """
@@ -125,7 +212,7 @@ def launch_clustered(cfg: DictConfig, dd_serialized: str, sched_nodelist: List[s
     :type dragon_nodelist: List[str]
     """
     # Print nodelist
-    print(f"\nRunning on {len(nodelist)} total nodes")
+    print(f"\nRunning on {len(sched_nodelist)} total nodes")
     dd_idx = range(cfg.dict.num_nodes)
     sim_idx = range(cfg.dict.num_nodes, cfg.dict.num_nodes+cfg.sim.num_nodes)
     ml_idx = range(cfg.dict.num_nodes+cfg.sim.num_nodes, cfg.dict.num_nodes+cfg.sim.num_nodes+cfg.train.num_nodes)
@@ -181,7 +268,7 @@ def launch_clustered(cfg: DictConfig, dd_serialized: str, sched_nodelist: List[s
     # Join both simulation and training
     ml_launch_proc.join()
     sim_launch_proc.join()
-    print('Exiting driver ...', flush=True)
+    print('Exiting launcher ...', flush=True)
 
 ## Mixed launch
 def launch_mixed(cfg: DictConfig, dd_serialized: str, sched_nodelist: List[str], dragon_nodelist: List[str]) -> None:
@@ -245,9 +332,7 @@ def launch_mixed(cfg: DictConfig, dd_serialized: str, sched_nodelist: List[str],
     # Join both simulation and training
     ml_launch_proc.join()
     sim_launch_proc.join()
-    print('Exiting driver ...', flush=True)
-
-
+    print('Exiting launcher ...', flush=True)
 
 ## Main function
 @hydra.main(version_base=None, config_path="./conf", config_name="dragon_config")
@@ -265,15 +350,16 @@ def main(cfg: DictConfig):
 
     # Start the Dragon Distributed Dictionary (DDict)
     mp.set_start_method("dragon")
-    total_mem_size = cfg.dict.total_mem_size * (1024*1024*1024)
-    dd_policy = Policy(cpu_affinity=list(cfg.dict.cpu_bind)) if cfg.dict.cpu_bind else None
-    dd = DDict(cfg.dict.managers_per_node, cfg.dict.num_nodes, total_mem_size, policy=dd_policy)
-    print("Launched the Dragon Dictionary \n", flush=True)
+    if cfg.deployment!='colocated':
+        total_mem_size = cfg.dict.total_mem_size * (1024*1024*1024)
+        dd_policy = Policy(cpu_affinity=list(cfg.dict.cpu_bind)) if cfg.dict.cpu_bind else None
+        dd = DDict(cfg.dict.managers_per_node, cfg.dict.num_nodes, total_mem_size, policy=dd_policy)
+        dd_serialized = dd.serialize()
+        print("Launched the Dragon Dictionary \n", flush=True)
     
-    dd_serialized = dd.serialize()
     if (cfg.deployment == "colocated"):
         print(f"Running with the {cfg.deployment} deployment \n")
-        launch_colocated(cfg, dd_serialized, nodelist)
+        launch_colocated(cfg, sched_nodelist, dragon_nodelist)
     elif (cfg.deployment == "clustered"):
         print(f"\nRunning with the {cfg.deployment} deployment \n")
         launch_clustered(cfg, dd_serialized, sched_nodelist, dragon_nodelist)
@@ -282,8 +368,10 @@ def main(cfg: DictConfig):
         launch_mixed(cfg, dd_serialized, sched_nodelist, dragon_nodelist)
 
     # Close the DDict and quit
-    dd.destroy()
-    print("\nClosed the Dragon Dictionary and quitting ...", flush=True)
+    if cfg.deployment!='colocated':
+        dd.destroy()
+        print("\nClosed the Dragon Dictionary", flush=True)
+    print("\nQuitting ...", flush=True)
 
 
 ## Run main
