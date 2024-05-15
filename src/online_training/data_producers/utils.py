@@ -37,9 +37,27 @@ def generate_training_data(args, comm_info: Tuple[int,int],
         x, y = partition_domain((-2*PI, 2*PI), (-2*PI, 2*PI), N, size, rank)
         x, y = np.meshgrid(x, y)
         coords = np.vstack((x.flatten(),y.flatten())).T
-        u = np.sin(0.1*step)*np.sin(x)*np.sin(y)
+        period = 100
+        freq = 2*PI/period
+        u = np.sin(freq*step)*np.sin(x)*np.sin(y)
         udt = np.sin(0.1*(step+1))*np.sin(x)*np.sin(y)
         data = np.vstack((u.flatten(),udt.flatten())).T
+    elif (args.problem_size=="medium"):
+        assert is_square(size) or size==1, "Number of MPI ranks must be square or 1"
+        N = 128
+        n_samples = N**2
+        ndIn = 2
+        ndTot = 4
+        x, y = partition_domain((-2*PI, 2*PI), (-2*PI, 2*PI), N, size, rank)
+        x, y = np.meshgrid(x, y)
+        coords = np.vstack((x.flatten(),y.flatten())).T
+        period = 100
+        freq = 2*PI/period
+        u = np.sin(freq*step)*np.sin(x+freq*step)*np.sin(y+freq*step)
+        udt = np.sin(freq*(step+1))*np.sin(x+freq*(step+1))*np.sin(y+freq*(step+1))
+        v = np.sin(freq*step)*np.cos(x+freq*step)*np.cos(y+freq*step)
+        vdt = np.sin(freq*(step+1))*np.cos(x+freq*(step+1))*np.cos(y+freq*(step+1))
+        data = np.vstack((u.flatten(),v.flatten(),udt.flatten(),vdt.flatten())).T
 
     return_dict = {
         "n_samples": n_samples,
