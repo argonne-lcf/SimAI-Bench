@@ -88,7 +88,10 @@ def launch_ProcessGroup(num_procs: int, num_procs_pn: int, nodelist,
     for node_num in range(len(nodelist)):   
         node_name = Node(nodelist[node_num]).hostname
         if ddicts is not None:
-            sim_args_list.append(f'--dictionary={ddicts[node_num]}')
+            if 'online.backend=dragon' in args_list:
+                args_list.append(f'online.dragon.dictionary={ddicts[node_num]}')
+            else:
+                args_list.append(f'--dictionary={ddicts[node_num]}')
         if cpu_bind is not None and len(cpu_bind)>0:
             for proc in range(num_procs_pn):
                 local_policy = Policy(placement=Policy.Placement.HOST_NAME,host_name=node_name,
@@ -132,18 +135,22 @@ def launch_colocated(cfg: DictConfig, sched_nodelist: List[str], dragon_nodelist
     global_policy = Policy(distribution=Policy.Distribution.BLOCK)
     sim_nodelist = dragon_nodelist
     ml_nodelist = dragon_nodelist
- 
+
     # Launch a DDict on each node
     num_dd_nodes = 1
     total_mem_size = cfg.dict.total_mem_size * (1024*1024*1024)
     node_mem_size = total_mem_size//len(dragon_nodelist)
     ddicts = {}
     ddicts_serialized = []
-    for host in dragon_nodelist:
-        with Policy(placement=Policy.Placement.HOST_NAME, host_name=host):
-            dd = DDict(cfg.dict.managers_per_node, num_dd_nodes, node_mem_size)
-            ddicts[host] = dd
+    for node_num in range(len(dragon_nodelist)):
+        try:
+            node_name = Node(dragon_nodelist[node_num]).hostname
+            dd_policy = Policy(placement=Policy.Placement.HOST_NAME, host_name=node_name)
+            dd = DDict(cfg.dict.managers_per_node, num_dd_nodes, node_mem_size, policy=dd_policy)
+            ddicts[node_name] = dd
             ddicts_serialized.append(dd.serialize())
+        except Exception as e:
+            print(e, flush=True)
     print('Launched the dictionaries on all the nodes \n', flush=True)
 
     # Set up and launch the simulation component
@@ -190,8 +197,9 @@ def launch_colocated(cfg: DictConfig, sched_nodelist: List[str], dragon_nodelist
     print('Joined simulation and training \n', flush=True)
 
     # Destroy all the DDicts
-    for host in dragon_nodelist:
-        dd = ddicts[host]
+    for node_num in range(len(dragon_nodelist)):
+        node_name = Node(dragon_nodelist[node_num]).hostname
+        dd = ddicts[node_name]
         dd.destroy()
     print('Destroyed all dictionaries \n', flush=True)
     print('Exiting launcher ...', flush=True) 
