@@ -39,7 +39,7 @@ export SR_CMD_TIMEOUT=1000 # default is 100 ms
 export SR_THREAD_COUNT=4 # default is 4
 
 # Run
-SIM_ARGS="--backend\=smartredis --model\=mlp --problem_size\=debug --launch\=colocated --ppn\=${SIM_RANKS} --tolerance\=0.002"
+SIM_ARGS="--backend\=smartredis --model\=mlp --problem_size\=debug --launch\=colocated --ppn\=${SIM_PROCS_PER_NODE} --tolerance\=0.002"
 python $DRIVER --config-path $DRIVER_CONFIG_PATH --config-name $DRIVER_CONFIG_NAME \
     database.deployment="colocated" \
     sim.executable=$SIM_EXE sim.arguments="${SIM_ARGS}" \

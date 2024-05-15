@@ -31,7 +31,7 @@ echo
 # Sent env vars
 
 # Run
-SIM_ARGS="--backend\=dragon --model\=mlp --problem_size\=small --launch\=clustered --ppn\=${SIM_RANKS} --tolerance\=0.004 --train_interval\=10 --db_max_mem_size\=0.1"
+SIM_ARGS="--backend\=dragon --model\=mlp --problem_size\=small --launch\=clustered --ppn\=${SIM_PROCS_PER_NODE} --tolerance\=0.004 --train_interval\=10 --db_max_mem_size\=0.1"
 dragon $DRIVER --config-path $DRIVER_CONFIG_PATH \
     deployment="mixed" \
     sim.executable=$SIM_EXE sim.arguments="${SIM_ARGS}" \

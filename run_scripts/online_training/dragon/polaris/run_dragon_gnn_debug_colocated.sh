@@ -32,7 +32,7 @@ echo
 # Sent env vars
 
 # Run
-SIM_ARGS="--backend\=dragon --model\=gnn --problem_size\=debug --launch\=colocated --ppn\=${SIM_RANKS} --tolerance\=0.002"
+SIM_ARGS="--backend\=dragon --model\=gnn --problem_size\=debug --launch\=colocated --ppn\=${SIM_PROCS_PER_NODE} --tolerance\=0.002"
 dragon $DRIVER --config-path $DRIVER_CONFIG_PATH --config-name $DRIVER_CONFIG_NAME \
     deployment="colocated" \
     sim.executable=$SIM_EXE sim.arguments="${SIM_ARGS}" \
