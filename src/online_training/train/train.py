@@ -62,9 +62,13 @@ def main(cfg: DictConfig):
     #if comm.rank==0: logger.addHandler(fh)
     
     if cfg.logging=='debug':
-        p = psutil.Process()
+        try:
+            p = psutil.Process()
+            core_list = p.cpu_affinity()
+        except:
+            core_list = []
         logger.debug(f"Hello from MPI rank {comm.rank}/{comm.size}, local rank {comm.rankl}, " \
-                     +f"core {p.cpu_affinity()}, and node {comm.name}")
+                     +f"core {core_list}, and node {comm.name}")
 
     # Intel imports
     try:

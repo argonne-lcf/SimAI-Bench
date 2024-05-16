@@ -74,9 +74,13 @@ def main():
 
     rankl = rank % args.ppn
     if args.logging=='debug':
-        p = psutil.Process()
+        try:
+            p = psutil.Process()
+            core_list = p.cpu_affinity()
+        except:
+            core_list = []
         logger.debug(f"Hello from MPI rank {rank}/{size}, local rank {rankl}, " \
-                     +f"core {p.cpu_affinity()}, and node {name}")
+                     +f"core {core_list}, and node {name}")
     if rank==0:
         logger.info(f'Running with {args.launch} deployment ')
         logger.info(f'and with {args.ppn} processes per node \n')
@@ -92,7 +96,7 @@ def main():
         logger.info(f'All {args.backend} clients initialized \n')
 
     # Generate synthetic data for the specific model
-    train_array, coords, data_stats = utils.generate_training_data(args, (rank, size))
+    train_array, coords, data_stats = utils.generate_training_data(args, comm)
 
     # Send training metadata
     client.setup_training_problem(coords, data_stats)
@@ -109,7 +113,7 @@ def main():
         if rank==0:
             logger.info(f"{step} \t {time()-t_start:>.2E}")
         sleep(0.5)
-        train_array, _, _ = utils.generate_training_data(args, (rank,size), step)
+        train_array, _, _ = utils.generate_training_data(args, comm, step)
 
         #if step>0 and step%60==0:
         #    args.train_interval = int(args.train_interval*1.2)
@@ -117,9 +121,8 @@ def main():
             # Check if model exists to perform inference
             exists = client.model_exists(comm)
             if exists:
-                if (args.problem_size=="debug" or args.problem_size=="small"):
-                    inputs = train_array[:,0]
-                    outputs = train_array[:,1]
+                inputs = train_array[:,:data_stats['n_dim_in']]
+                outputs = train_array[:,data_stats['n_dim_in']:]
                 error = client.infer_model(comm, inputs, outputs)
                 if (rank==0):
                     logger.info(f"\tPerformed inference with error={error:>8e}")
