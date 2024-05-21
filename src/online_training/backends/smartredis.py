@@ -197,7 +197,7 @@ class SmartRedis_Sim_Client:
             self.client.put_tensor(input_key, inputs.astype(np.float32))
             self.client.run_model(self.model, inputs=[input_key], 
                                   outputs=[output_key])
-            pred = self.client.get_tensor(output_key)
+            pred = self.client.get_tensor(output_key).astype(np.float32)
         toc = perf_counter()
         self.times["tot_infer"] += toc - tic
         self.times["infer"].append(toc - tic)

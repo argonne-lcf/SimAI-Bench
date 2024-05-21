@@ -48,7 +48,9 @@ def generate_training_data(args, comm,
         freq = 2*PI/period
         u = np.sin(2.0*r-freq*step)/(r+1.0)
         udt = np.sin(2.0*r-freq*(step+1))/(r+1.0)
-        data = np.vstack((u.flatten(),udt.flatten())).T
+        data = np.empty((n_samples,ndTot))
+        data[:,0] = u.flatten() 
+        data[:,1] = udt.flatten() 
     elif (args.problem_size=="medium"):
         #assert is_square(size) or size==1, "Number of MPI ranks must be square or 1"
         N = 256
@@ -70,7 +72,11 @@ def generate_training_data(args, comm,
         udt = np.sin(2.0*r-freq*(step+1))/(r+1.0)
         v = np.cos(2.0*r-freq*step)/(r+1.0)
         vdt = np.cos(2.0*r-freq*(step+1))/(r+1.0)
-        data = np.vstack((u.flatten(),v.flatten(),udt.flatten(),vdt.flatten())).T
+        data = np.empty((n_samples,ndTot))
+        data[:,0] = u.flatten() 
+        data[:,1] = v.flatten() 
+        data[:,2] = udt.flatten() 
+        data[:,3] = vdt.flatten() 
     elif (args.problem_size=="large"):
         N = 128
         n_samples = N**3
@@ -93,8 +99,13 @@ def generate_training_data(args, comm,
         vdt = np.cos(2.0*r-freq*(step+1))/(r+1.0)
         w = np.sin(2.0*r-freq*step)**2/(r+1.0)
         wdt = np.sin(2.0*r-freq*(step+1))**2/(r+1.0)
-        data = np.vstack((u.flatten(),v.flatten(),w.flatten(),
-                          udt.flatten(),vdt.flatten(),wdt.flatten())).T
+        data = np.empty((n_samples,ndTot))
+        data[:,0] = u.flatten() 
+        data[:,1] = v.flatten() 
+        data[:,2] = w.flatten() 
+        data[:,3] = udt.flatten() 
+        data[:,4] = vdt.flatten() 
+        data[:,5] = wdt.flatten() 
 
     return_dict = {
         "n_samples": n_samples,

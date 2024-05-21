@@ -26,16 +26,13 @@ from online_training.train.offline_train import offlineTrainLoop
 from online_training.train import models
 from online_training.train.time_prof import timeStats
 from online_training.train import utils
-#import online_training.backends as client_backends
-try:
-    from online_training.backends.smartredis import SmartRedis_Train_Client
-except:
-    pass
-try:
-    from online_training.backends.dragon import Dragon_Train_Client
-except:
-    pass
 
+try:
+    import dragon
+    from dragon.globalservices.api_setup import connect_to_infrastructure
+    connect_to_infrastructure()
+except:
+    pass
 
 ## Main function
 @hydra.main(version_base=None, config_path="./conf", config_name="train_config")
@@ -73,12 +70,12 @@ def main(cfg: DictConfig):
     # Intel imports
     try:
         import intel_extension_for_pytorch
-    except ModuleNotFoundError as err:
-        if comm.rank==0: logger.warning(err)
+    except ModuleNotFoundError as e:
+        if comm.rank==0: logger.warning(f'{e}')
     try:
         import oneccl_bindings_for_pytorch
-    except ModuleNotFoundError as err:
-        if comm.rank==0: logger.warning(err)
+    except ModuleNotFoundError as e:
+        if comm.rank==0: logger.warning(f'{e}')
 
     # Initialize Torch Distributed
     os.environ['RANK'] = str(comm.rank)
@@ -120,9 +117,19 @@ def main(cfg: DictConfig):
     client = None
     if cfg.online.backend:
         if cfg.online.backend=='smartredis':
-            client = SmartRedis_Train_Client(cfg, comm.rank, comm.size)
+            try:
+                from online_training.backends.smartredis import SmartRedis_Train_Client
+                client = SmartRedis_Train_Client(cfg, comm.rank, comm.size)
+            except Exception as e:
+                logger.info('Could not import client, exception')
+                logger.info(f'{e}')
         elif cfg.online.backend=='dragon':
-            client = Dragon_Train_Client(cfg, comm.rank, comm.size)
+            try:
+                from online_training.backends.dragon import Dragon_Train_Client
+                client = Dragon_Train_Client(cfg, comm.rank, comm.size)
+            except Exception as e:
+                logger.info('Could not import client, exception')
+                logger.info(f'{e}')
         client.init()
         comm.comm.Barrier()
         if comm.rank == 0:

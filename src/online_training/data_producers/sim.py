@@ -16,14 +16,10 @@ mpi_ops = {
     }
 
 try:
-    from online_training.backends.smartredis import SmartRedis_Sim_Client
-except Exception as err: 
-    print(err, flush=True)
-    pass
-try:
-    from online_training.backends.dragon import Dragon_Sim_Client
-except Exception as err:
-    print(err, flush=True)
+    import dragon
+    from dragon.globalservices.api_setup import connect_to_infrastructure
+    connect_to_infrastructure()
+except:
     pass
 from online_training.data_producers import utils
 
@@ -87,9 +83,19 @@ def main():
 
     # Initialize client
     if args.backend=='smartredis':
-        client = SmartRedis_Sim_Client(args, rank, size)
+        try:
+            from online_training.backends.smartredis import SmartRedis_Sim_Client
+            client = SmartRedis_Sim_Client(args, rank, size)
+        except Exception as e:
+            logger.info('Could not import client, exception')
+            logger.info(f'{e}')
     elif args.backend=='dragon':
-        client = Dragon_Sim_Client(args, rank, size)
+        try:
+            from online_training.backends.dragon import Dragon_Sim_Client
+            client = Dragon_Sim_Client(args, rank, size)
+        except Exception as e:
+            logger.info('Could not import client, exception')
+            logger.info(f'{e}')
     client.init()
     comm.Barrier()
     if rank==0:
