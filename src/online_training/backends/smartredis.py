@@ -21,6 +21,7 @@ class SmartRedis_Sim_Client:
         self.db_nodes = args.db_nodes
         self.rank = rank
         self.size = size
+        self.rankl = self.rank%self.size
         self.ppn = args.ppn
         self.ow = True if args.problem_size=="debug" else False
         self.max_mem = args.db_max_mem_size*1024*1024*1024
@@ -33,7 +34,10 @@ class SmartRedis_Sim_Client:
             "tot_train": 0.,
             "train": [],
             "tot_infer": 0.,
-            "infer": []
+            "infer": [],
+            "infer_send": [],
+            "infer_run": [],
+            "infer_rcv": []
         }
         self.time_stats = {}
 
@@ -184,20 +188,41 @@ class SmartRedis_Sim_Client:
             model_jit = torch.jit.load(buffer, map_location='cpu')
             x = torch.from_numpy(inputs).type(torch.float32)
             if self.model=='mlp':
+                ticc = perf_counter()
                 with torch.no_grad():
-                    pred = model_jit(x).numpy()
+                    model_jit.to(f'cuda:{3-self.rankl}')
+                    x = x.to(f'cuda:{3-self.rankl}')
+                    pred = model_jit(x).cpu().numpy()
+                tocc = perf_counter()
+                self.times["infer_run"].append(tocc - ticc)
             elif self.model=='gnn':
                 edge_index = torch.from_numpy(self.edge_index).type(torch.int64)
                 pos = torch.from_numpy(self.coords).type(torch.float32)
                 with torch.no_grad():
-                    pred = model_jit(x, edge_index, pos).numpy()
+                    model_jit.to(f'cuda:{3-self.rankl}')
+                    x = x.to(f'cuda:{3-self.rankl}')
+                    edge_index = edge_index.to(f'cuda:{3-self.rankl}')
+                    pos = pos.to(f'cuda:{3-self.rankl}')
+                    pred = model_jit(x, edge_index, pos).cpu().numpy()
         else:
             input_key = f"{self.model}_inputs_{self.rank}"
             output_key = f"{self.model}_outputs_{self.rank}"
+            ticc = perf_counter()
             self.client.put_tensor(input_key, inputs.astype(np.float32))
-            self.client.run_model(self.model, inputs=[input_key], 
-                                  outputs=[output_key])
+            tocc = perf_counter()
+            self.times["infer_send"].append(tocc - ticc)
+            ticc = perf_counter()
+            #self.client.run_model(self.model, inputs=[input_key], 
+            #                      outputs=[output_key])
+            self.client.run_model_multigpu(self.model, self.rankl, 0, 4,
+                                           inputs=[input_key], 
+                                           outputs=[output_key])
+            tocc = perf_counter()
+            self.times["infer_run"].append(tocc - ticc)
+            ticc = perf_counter()
             pred = self.client.get_tensor(output_key).astype(np.float32)
+            tocc = perf_counter()
+            self.times["infer_rcv"].append(tocc - ticc)
         toc = perf_counter()
         self.times["tot_infer"] += toc - tic
         self.times["infer"].append(toc - tic)
@@ -214,14 +239,19 @@ class SmartRedis_Sim_Client:
     # Collect timing statistics across ranks
     def collect_stats(self, comm, mpi_ops):
         for _, (key, val) in enumerate(self.times.items()):
-            if (key=="train" or key=="infer"):
-                collected_arr = np.zeros((len(val)*comm.Get_size()))
-                comm.Gather(np.array(val),collected_arr,root=0)
-                avg = np.mean(collected_arr)
-                std = np.std(collected_arr)
-                min = np.amin(collected_arr); min_loc = [min, 0]
-                max = np.amax(collected_arr); max_loc = [max, 0]
-                summ = np.sum(collected_arr)
+            if type(val)==list:
+                if val:
+                    if 'infer' in key: val.pop(0)
+                    collected_arr = np.zeros((len(val)*comm.Get_size()))
+                    comm.Gather(np.array(val),collected_arr,root=0)
+                    avg = np.mean(collected_arr)
+                    std = np.std(collected_arr)
+                    minn = np.amin(collected_arr); min_loc = [minn, 0]
+                    maxx = np.amax(collected_arr); max_loc = [maxx, 0]
+                    summ = np.sum(collected_arr)
+                else:
+                    avg = std = summ = 0.
+                    min_loc = max_loc = [0., 0]
             else:
                 summ = comm.allreduce(np.array(val), op=mpi_ops["sum"])
                 avg = summ / comm.Get_size()
@@ -406,7 +436,10 @@ class SmartRedis_Train_Client:
     def put_model(self, key: str, model_bytes: io.BytesIO,
                   device: Optional[str] = None) -> None:
         if key=='mlp' and device:
-            self.client.set_model(key, model_bytes.getvalue(), 'TORCH', device)
+            if device=='CPU' or ':' in device:
+                self.client.set_model(key, model_bytes.getvalue(), 'TORCH', device)
+            elif device=='GPU':
+                self.client.set_model_multigpu(key, model_bytes.getvalue(), 'TORCH', 0, 4)
         else:
             self.client.put_bytes(key, model_bytes)
             self.put_value(f'{key}_bytes',1)

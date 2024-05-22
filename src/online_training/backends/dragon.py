@@ -22,6 +22,7 @@ class Dragon_Sim_Client:
         self.launch = args.launch
         self.rank = rank
         self.size = size
+        self.rankl = self.rank%self.size
         self.ppn = args.ppn
         self.ow = True if args.problem_size=="debug" else False
         self.max_mem = args.db_max_mem_size*1024*1024*1024
@@ -194,10 +195,16 @@ class Dragon_Sim_Client:
             edge_index = torch.from_numpy(self.edge_index).type(torch.int64)
             pos = torch.from_numpy(self.coords).type(torch.float32)
             with torch.no_grad():
-                pred = model_jit(x, edge_index, pos).numpy()
+                model_jit.to(f'cuda:{3-self.rankl}')
+                x = x.to(f'cuda:{3-self.rankl}')
+                edge_index = edge_index.to(f'cuda:{3-self.rankl}')
+                pos = pos.to(f'cuda:{3-self.rankl}')
+                pred = model_jit(x, edge_index, pos).cpu().numpy()
         elif (self.model=='mlp'):
             with torch.no_grad():
-                pred = model_jit(x).numpy()
+                model_jit.to(f'cuda:{3-self.rankl}')
+                x = x.to(f'cuda:{3-self.rankl}')
+                pred = model_jit(x).cpu().numpy()
         toc = perf_counter()
         self.times["tot_infer"] += toc - tic
         self.times["infer"].append(toc - tic)
@@ -214,14 +221,19 @@ class Dragon_Sim_Client:
     # Collect timing statistics across ranks
     def collect_stats(self, comm, mpi_ops):
         for _, (key, val) in enumerate(self.times.items()):
-            if (key=="train" or key=="infer"):
-                collected_arr = np.zeros((len(val)*comm.Get_size()))
-                comm.Gather(np.array(val),collected_arr,root=0)
-                avg = np.mean(collected_arr)
-                std = np.std(collected_arr)
-                min = np.amin(collected_arr); min_loc = [min, 0]
-                max = np.amax(collected_arr); max_loc = [max, 0]
-                summ = np.sum(collected_arr)
+            if type(val)==list:
+                if val:
+                    if 'infer' in key: val.pop(0)
+                    collected_arr = np.zeros((len(val)*comm.Get_size()))
+                    comm.Gather(np.array(val),collected_arr,root=0)
+                    avg = np.mean(collected_arr)
+                    std = np.std(collected_arr)
+                    minn = np.amin(collected_arr); min_loc = [minn, 0]
+                    maxx = np.amax(collected_arr); max_loc = [maxx, 0]
+                    summ = np.sum(collected_arr)
+                else:
+                    avg = std = summ = 0.
+                    min_loc = max_loc = [0., 0]
             else:
                 summ = comm.allreduce(np.array(val), op=mpi_ops["sum"])
                 avg = summ / comm.Get_size()
