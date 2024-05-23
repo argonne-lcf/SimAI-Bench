@@ -162,11 +162,13 @@ def launch_clDB(cfg, nodelist, nNodes):
         }
     if (cfg.database.launcher=='local'): run_command = 'mpirun'
     elif (cfg.database.launcher=='pals'): run_command = 'mpiexec'
+    network = cfg.database.network_interface if type(cfg.database.network_interface)==str \
+                                             else OmegaConf.to_object(cfg.database.network_interface)  
     db = exp.create_database(port=PORT, 
                              batch=False,
                              db_nodes=cfg.run_args.db_nodes,
                              run_command=run_command,
-                             interface=OmegaConf.to_object(cfg.database.network_interface), 
+                             interface=network, 
                              hosts=dbNodes_list,
                              run_args=runArgs,
                              single_cmd=True,
