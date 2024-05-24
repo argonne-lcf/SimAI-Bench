@@ -21,8 +21,8 @@ class SmartRedis_Sim_Client:
         self.db_nodes = args.db_nodes
         self.rank = rank
         self.size = size
-        self.rankl = self.rank%self.size
         self.ppn = args.ppn
+        self.rankl = self.rank%self.ppn
         self.ow = True if args.problem_size=="debug" else False
         self.max_mem = args.db_max_mem_size*1024*1024*1024
         self.db_address = None
@@ -43,7 +43,7 @@ class SmartRedis_Sim_Client:
 
         if (self.launch == "colocated"):
             self.db_nodes = 1
-            self.head_rank = self.rank//self.ppn
+            self.head_rank = self.rank//self.ppn * self.ppn
         elif (self.launch == "clustered"):
             self.ppn = size
             self.head_rank = 0
@@ -319,7 +319,7 @@ class SmartRedis_Train_Client:
         self.train_array_sz = 0
 
         if self.launch == "colocated":
-            self.head_rank = self.rank//(self.ppn*self.ppd)
+            self.head_rank = self.rank//(self.ppn*self.ppd) * (self.ppn*self.ppd)
         elif self.launch == "clustered":
             self.head_rank = 0
 

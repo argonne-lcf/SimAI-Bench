@@ -22,8 +22,8 @@ class Dragon_Sim_Client:
         self.launch = args.launch
         self.rank = rank
         self.size = size
-        self.rankl = self.rank%self.size
         self.ppn = args.ppn
+        self.rankl = self.rank%self.ppn
         self.ow = True if args.problem_size=="debug" else False
         self.max_mem = args.db_max_mem_size*1024*1024*1024
         self.model = args.model
@@ -40,7 +40,7 @@ class Dragon_Sim_Client:
         self.time_stats = {}
 
         if (self.launch == "colocated"):
-            self.head_rank = self.rank//self.ppn
+            self.head_rank = self.rank//self.ppn * self.ppn
         elif (self.launch == "clustered"):
             self.ppn = size
             self.head_rank = 0
@@ -301,7 +301,7 @@ class Dragon_Train_Client:
         self.train_array_sz = 0
 
         if self.launch == "colocated":
-            self.head_rank = self.rank//(self.ppn*self.ppd)
+            self.head_rank = self.rank//(self.ppn*self.ppd) * (self.ppn*self.ppd)
         elif self.launch == "clustered":
             self.head_rank = 0
 

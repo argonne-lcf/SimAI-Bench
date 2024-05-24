@@ -132,6 +132,7 @@ def main(cfg: DictConfig):
                 logger.info(f'{e}')
         client.init()
         comm.comm.Barrier()
+        if comm.rank==client.head_rank: logger.debug(f'Rank {comm.rank} is a head rank')
         if comm.rank == 0:
             logger.info(f"Initialized all {cfg.online.backend} clients\n")
             logger.info("Getting size info from simulation ...")

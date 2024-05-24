@@ -100,6 +100,7 @@ def main():
     comm.Barrier()
     if rank==0:
         logger.info(f'All {args.backend} clients initialized \n')
+    if rank==client.head_rank: logger.debug(f'Rank {rank} is a head rank')
 
     # Generate synthetic data for the specific model
     train_array, coords, data_stats = utils.generate_training_data(args, comm)
