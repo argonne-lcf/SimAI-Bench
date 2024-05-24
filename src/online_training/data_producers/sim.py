@@ -154,7 +154,7 @@ def main():
                     logger.warning(f'\tOut of memory in staging area, did not send training data')
 
             # Exit if model has converged to tolerence for 5 consecutive checks
-            if success>=5: 
+            if success>=7: 
                 client.stop_train()
                 if rank==0:
                     logger.info("\nModel has converged to tolerence for 5 consecutive checks")
