@@ -150,15 +150,16 @@ class Dragon_Sim_Client:
     # Check DB memory
     def check_mem(self, array: np.ndarray) -> bool:
         key = 'asdf_{self.rank}'
-        try:
-            tic = perf_counter()
-            self.put(key,array)
-            #del self._dd[key]
-            toc = perf_counter()
-            self.times["tot_meta"] += toc - tic
-            return True
-        except:
-            return False
+        #try:
+        #    tic = perf_counter()
+        #    self.put(key,array)
+        #    del self._dd[key]
+        #    toc = perf_counter()
+        #    self.times["tot_meta"] += toc - tic
+        #    return True
+        #except:
+        #    return False
+        return True
 
     # Send time step
     def send_step(self, step: int):

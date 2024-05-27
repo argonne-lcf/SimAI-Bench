@@ -6,7 +6,7 @@ deployment: "mixed" # colocated,clustered,mixed - deployment approach for workfl
 dict:
     num_nodes: 1 # int - number of nodes across which to launch the dictionary
     managers_per_node: 1 # int - number of dictionary managers per node
-    total_mem_size: 1 # int - total managed memory size for dictionary in GB
+    mem_size_per_node: 1 # int - managed memory size for each dictionary node in GB
     cpu_bind: [] # list - CPU binding for the dictionary
 
 # Simulation config

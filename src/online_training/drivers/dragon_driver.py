@@ -88,6 +88,7 @@ def launch_ProcessGroup(num_procs: int, num_procs_pn: int, nodelist,
     for node_num in range(len(nodelist)):   
         node_name = Node(nodelist[node_num]).hostname
         if ddicts is not None:
+            args_list.pop(-1)
             if 'online.backend=dragon' in args_list:
                 args_list.append(f'online.dragon.dictionary={ddicts[node_num]}')
             else:
@@ -138,8 +139,7 @@ def launch_colocated(cfg: DictConfig, sched_nodelist: List[str], dragon_nodelist
 
     # Launch a DDict on each node
     num_dd_nodes = 1
-    total_mem_size = cfg.dict.total_mem_size * (1024*1024*1024)
-    node_mem_size = total_mem_size//len(dragon_nodelist)
+    node_mem_size = cfg.dict.mem_size_per_node * (1024*1024*1024)
     ddicts = {}
     ddicts_serialized = []
     for node_num in range(len(dragon_nodelist)):
@@ -160,7 +160,7 @@ def launch_colocated(cfg: DictConfig, sched_nodelist: List[str], dragon_nodelist
         sim_exe = sys.executable
         sim_args_list.append(cfg.sim.executable)
     sim_args_list.extend(cfg.sim.arguments.split(' '))
-    #sim_args_list.append(f'--dictionary={dd_serialized}')
+    sim_args_list.append(f'--dictionary={ddicts_serialized[0]}')
     sim_run_dir = os.getcwd()
     sim_launch_proc = mp.Process(target=launch_ProcessGroup, args=(cfg.sim.procs, cfg.sim.procs_pn, sim_nodelist,
                                                                    sim_exe, sim_args_list, sim_run_dir,
@@ -182,7 +182,7 @@ def launch_colocated(cfg: DictConfig, sched_nodelist: List[str], dragon_nodelist
                          f'online.launch=colocated'],
                          )
     ddicts_serialized_nice = [dd_tmp.replace('=','\=') for dd_tmp in ddicts_serialized]
-    #ml_args_list.append(f'online.dragon.dictionary={dd_serialized_nice}')
+    ml_args_list.append(f'online.dragon.dictionary={ddicts_serialized_nice[0]}')
     ml_run_dir = os.getcwd()
     ml_launch_proc = mp.Process(target=launch_ProcessGroup, args=(cfg.train.procs, cfg.train.procs_pn, ml_nodelist,
                                                                   ml_exe, ml_args_list, ml_run_dir,
@@ -221,18 +221,17 @@ def launch_clustered(cfg: DictConfig, dd_serialized: str, sched_nodelist: List[s
     """
     # Print nodelist
     print(f"\nRunning on {len(sched_nodelist)} total nodes")
-    dd_idx = range(cfg.dict.num_nodes)
-    sim_idx = range(cfg.dict.num_nodes, cfg.dict.num_nodes+cfg.sim.num_nodes)
-    ml_idx = range(cfg.dict.num_nodes+cfg.sim.num_nodes, cfg.dict.num_nodes+cfg.sim.num_nodes+cfg.train.num_nodes)
-    dd_nodelist = ','.join(dragon_nodelist[dd_idx])
-    sim_nodelist = ','.join(dragon_nodelist[sim_idx])
-    ml_nodelist = ','.join(dragon_nodelist[ml_idx])
+    dd_nodelist = [dragon_nodelist[i] for i in range(cfg.dict.num_nodes)]
+    sim_nodelist = [dragon_nodelist[i] for i in range(cfg.dict.num_nodes, cfg.dict.num_nodes+cfg.sim.num_nodes)]
+    ml_nodelist = [dragon_nodelist[i] for i in range(cfg.dict.num_nodes+cfg.sim.num_nodes, 
+                                                     cfg.dict.num_nodes+cfg.sim.num_nodes+cfg.train.num_nodes)]
     print(f"Database running on {cfg.dict.num_nodes} nodes:")
-    print(sched_nodelist[dd_idx])
+    print([sched_nodelist[i] for i in range(cfg.dict.num_nodes)])
     print(f"Simulatiom running on {cfg.sim.num_nodes} nodes:")
-    print(sched_nodelist[sim_idx])
+    print([sched_nodelist[i] for i in range(cfg.dict.num_nodes, cfg.dict.num_nodes+cfg.sim.num_nodes)])
     print(f"ML running on {cfg.train.num_nodes} nodes:")
-    print(sched_nodelist[ml_idx], "\n")
+    print([sched_nodelist[i] for i in range(cfg.dict.num_nodes+cfg.sim.num_nodes, \
+                                                     cfg.dict.num_nodes+cfg.sim.num_nodes+cfg.train.num_nodes)], "\n")
     sys.stdout.flush()
 
     global_policy = Policy(distribution=Policy.Distribution.BLOCK)
@@ -359,9 +358,10 @@ def main(cfg: DictConfig):
     # Start the Dragon Distributed Dictionary (DDict)
     mp.set_start_method("dragon")
     if cfg.deployment!='colocated':
-        total_mem_size = cfg.dict.total_mem_size * (1024*1024*1024)
+        total_mem_size = cfg.dict.mem_size_per_node * cfg.dict.num_nodes * (1024*1024*1024)
         dd_policy = Policy(cpu_affinity=list(cfg.dict.cpu_bind)) if cfg.dict.cpu_bind else None
-        dd = DDict(cfg.dict.managers_per_node, cfg.dict.num_nodes, total_mem_size, policy=dd_policy)
+        dd = DDict(cfg.dict.managers_per_node, cfg.dict.num_nodes, 
+                   total_mem_size, policy=dd_policy, timeout=60)
         dd_serialized = dd.serialize()
         print("Launched the Dragon Dictionary \n", flush=True)
     

@@ -166,8 +166,9 @@ class SmartRedis_Sim_Client:
     def model_exists(self, comm) -> bool:
         local_exists = 0
         tic = perf_counter()
-        #if self.client.model_exists(self.model): local_exists = 1
-        if self.client.key_exists(self.model): local_exists = 1
+        if self.client.key_exists(f'{self.model}_bytes'): local_exists = 1
+        if local_exists==0:
+            if self.client.model_exists(self.model): local_exists = 1
         toc = perf_counter()
         self.times["tot_meta"] += toc - tic
         global_exists = comm.allreduce(local_exists)
