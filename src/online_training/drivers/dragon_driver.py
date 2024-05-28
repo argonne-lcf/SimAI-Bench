@@ -117,21 +117,19 @@ def launch_ProcessGroup(num_procs: int, num_procs_pn: int, nodelist,
     grp.stop()
 
 ## Colocated launch
-def launch_colocated(cfg: DictConfig, sched_nodelist: List[str], dragon_nodelist: List[str]) -> None:
+def launch_colocated(cfg: DictConfig, dragon_nodelist: List[str]) -> None:
     """
     Launch the workflow with the colocated deployment (components are launched on same set of nodes,
     and data is kept local to each node, no inter-node transfers)
 
     :param cfg: hydra config
     :type cfg: DictConfig
-    :param sched_nodelist: node list provided by scheduler
-    :type sched_nodelist: List[str]
     :param dragon_nodelist: node list provided by Dragon
     :type dragon_nodelist: List[str]
     """
     # Print nodelist
-    print(f"\nRunning on {len(sched_nodelist)} total nodes")
-    print(sched_nodelist, "\n")
+    print(f"\nRunning on {len(dragon_nodelist)} total nodes")
+    print([Node(dragon_nodelist[i]).hostname for i in range(len(dragon_nodelist))], "\n")
 
     global_policy = Policy(distribution=Policy.Distribution.BLOCK)
     sim_nodelist = dragon_nodelist
@@ -205,7 +203,7 @@ def launch_colocated(cfg: DictConfig, sched_nodelist: List[str], dragon_nodelist
     print('Exiting launcher ...', flush=True) 
 
 ## Clustered launch
-def launch_clustered(cfg: DictConfig, dd_serialized: str, sched_nodelist: List[str], dragon_nodelist: List[str]) -> None:
+def launch_clustered(cfg: DictConfig, dd_serialized: str, dragon_nodelist: List[str]) -> None:
     """
     Launch the workflow with the clustered deployment (components are launched on separate set of nodes,
     so data is always transferred across nodes to fill in DDict)
@@ -214,24 +212,21 @@ def launch_clustered(cfg: DictConfig, dd_serialized: str, sched_nodelist: List[s
     :type cfg: DictConfig
     :param dd_serialized: serialized Dragon Distributed Dictionary
     :type dd_serialized: str
-    :param sched_nodelist: node list provided by scheduler
-    :type sched_nodelist: List[str]
     :param dragon_nodelist: node list provided by Dragon
     :type dragon_nodelist: List[str]
     """
     # Print nodelist
-    print(f"\nRunning on {len(sched_nodelist)} total nodes")
+    print(f"\nRunning on {len(dragon_nodelist)} total nodes")
     dd_nodelist = [dragon_nodelist[i] for i in range(cfg.dict.num_nodes)]
     sim_nodelist = [dragon_nodelist[i] for i in range(cfg.dict.num_nodes, cfg.dict.num_nodes+cfg.sim.num_nodes)]
     ml_nodelist = [dragon_nodelist[i] for i in range(cfg.dict.num_nodes+cfg.sim.num_nodes, 
                                                      cfg.dict.num_nodes+cfg.sim.num_nodes+cfg.train.num_nodes)]
     print(f"Database running on {cfg.dict.num_nodes} nodes:")
-    print([sched_nodelist[i] for i in range(cfg.dict.num_nodes)])
+    print([Node(dd_nodelist[i]).hostname for i in range(cfg.dict.num_nodes)])
     print(f"Simulatiom running on {cfg.sim.num_nodes} nodes:")
-    print([sched_nodelist[i] for i in range(cfg.dict.num_nodes, cfg.dict.num_nodes+cfg.sim.num_nodes)])
+    print([Node(sim_nodelist[i]).hostname for i in range(cfg.sim.num_nodes)])
     print(f"ML running on {cfg.train.num_nodes} nodes:")
-    print([sched_nodelist[i] for i in range(cfg.dict.num_nodes+cfg.sim.num_nodes, \
-                                                     cfg.dict.num_nodes+cfg.sim.num_nodes+cfg.train.num_nodes)], "\n")
+    print([Node(ml_nodelist[i]).hostname for i in range(cfg.train.num_nodes)])
     sys.stdout.flush()
 
     global_policy = Policy(distribution=Policy.Distribution.BLOCK)
@@ -278,7 +273,7 @@ def launch_clustered(cfg: DictConfig, dd_serialized: str, sched_nodelist: List[s
     print('Exiting launcher ...', flush=True)
 
 ## Mixed launch
-def launch_mixed(cfg: DictConfig, dd_serialized: str, sched_nodelist: List[str], dragon_nodelist: List[str]) -> None:
+def launch_mixed(cfg: DictConfig, dd_serialized: str, dragon_nodelist: List[str]) -> None:
     """
     Launch the workflow with the mixed deployment (components are colocated on same nodes,
     but data can still transfer across nodes to fill in DDict)
@@ -287,14 +282,12 @@ def launch_mixed(cfg: DictConfig, dd_serialized: str, sched_nodelist: List[str],
     :type cfg: DictConfig
     :param dd_serialized: serialized Dragon Distributed Dictionary
     :type dd_serialized: str
-    :param sched_nodelist: node list provided by scheduler
-    :type sched_nodelist: List[str]
     :param dragon_nodelist: node list provided by Dragon
     :type dragon_nodelist: List[str]
     """
     # Print nodelist
-    print(f"\nRunning on {len(sched_nodelist)} total nodes")
-    print(sched_nodelist, "\n")
+    print(f"\nRunning on {len(dragon_nodelist)} total nodes")
+    print([Node(dragon_nodelist[i]).hostname for i in range(len(dragon_nodelist))], "\n")
 
     global_policy = Policy(distribution=Policy.Distribution.BLOCK)
     sim_nodelist = dragon_nodelist
@@ -350,7 +343,7 @@ def main(cfg: DictConfig):
                     print("Deployment is either colocated, clustered or mixed")
 
     # Get information on this allocation
-    sched_nodelist = parseNodeList(cfg.scheduler)
+    #sched_nodelist = parseNodeList(cfg.scheduler)
     alloc = System()
     num_tot_nodes = alloc.nnodes()
     dragon_nodelist = alloc.nodes
@@ -367,13 +360,13 @@ def main(cfg: DictConfig):
     
     if (cfg.deployment == "colocated"):
         print(f"Running with the {cfg.deployment} deployment \n")
-        launch_colocated(cfg, sched_nodelist, dragon_nodelist)
+        launch_colocated(cfg, dragon_nodelist)
     elif (cfg.deployment == "clustered"):
         print(f"\nRunning with the {cfg.deployment} deployment \n")
-        launch_clustered(cfg, dd_serialized, sched_nodelist, dragon_nodelist)
+        launch_clustered(cfg, dd_serialized, dragon_nodelist)
     elif (cfg.deployment == "mixed"):
         print(f"\nRunning with the {cfg.deployment} deployment \n")
-        launch_mixed(cfg, dd_serialized, sched_nodelist, dragon_nodelist)
+        launch_mixed(cfg, dd_serialized, dragon_nodelist)
 
     # Close the DDict and quit
     if cfg.deployment!='colocated':
