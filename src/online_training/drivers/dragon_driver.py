@@ -145,8 +145,14 @@ def launch_colocated(cfg: DictConfig, dragon_nodelist: List[str]) -> None:
             node_name = Node(dragon_nodelist[node_num]).hostname
             dd_policy = Policy(placement=Policy.Placement.HOST_NAME, host_name=node_name)
             dd = DDict(cfg.dict.managers_per_node, num_dd_nodes, node_mem_size, policy=dd_policy)
+            dd['node'] = node_name
             ddicts[node_name] = dd
             ddicts_serialized.append(dd.serialize())
+            # Also write the serialized DDict to file for now,
+            # passing it through command line arg results in all ranks
+            # connecting to the last node's DDict
+            with open(f'ddict_{node_name}','w') as f:
+                f.write(f'{dd.serialize()}')
         except Exception as e:
             print(e, flush=True)
     print('Launched the dictionaries on all the nodes \n', flush=True)
@@ -354,7 +360,8 @@ def main(cfg: DictConfig):
         total_mem_size = cfg.dict.mem_size_per_node * cfg.dict.num_nodes * (1024*1024*1024)
         dd_policy = Policy(cpu_affinity=list(cfg.dict.cpu_bind)) if cfg.dict.cpu_bind else None
         dd = DDict(cfg.dict.managers_per_node, cfg.dict.num_nodes, 
-                   total_mem_size, policy=dd_policy, timeout=60)
+                   total_mem_size, policy=dd_policy, timeout=3600,
+                   num_streams_per_manager=20)
         dd_serialized = dd.serialize()
         print("Launched the Dragon Dictionary \n", flush=True)
     

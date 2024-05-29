@@ -126,7 +126,7 @@ def main(cfg: DictConfig):
         elif cfg.online.backend=='dragon':
             try:
                 from online_training.backends.dragon import Dragon_Train_Client
-                client = Dragon_Train_Client(cfg, comm.rank, comm.size)
+                client = Dragon_Train_Client(cfg, comm.rank, comm.size, comm.name)
             except Exception as e:
                 logger.info('Could not import client, exception')
                 logger.info(f'{e}')

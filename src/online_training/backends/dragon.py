@@ -17,11 +17,12 @@ from dragon.data.ddict.ddict import DDict
 
 # Dragon Client Class for the Simulation (Data Producer)
 class Dragon_Sim_Client:
-    def __init__(self, args, rank: int, size: int):
+    def __init__(self, args, rank: int, size: int, node_name: str):
         self._dd_serialized = args.dictionary
         self.launch = args.launch
         self.rank = rank
         self.size = size
+        self.node_name = node_name
         self.ppn = args.ppn
         self.rankl = self.rank%self.ppn
         self.ow = True if args.problem_size=="debug" else False
@@ -52,7 +53,13 @@ class Dragon_Sim_Client:
     # Initialize client
     def init(self):
         tic = perf_counter()
-        self._dd = DDict.attach(self._dd_serialized, timeout=30)
+        # Reading from file is needed for now because when passing serialized DDict
+        # by command line arg all ranks see the one on the last node
+        with open(f'ddict_{self.node_name}','r') as f:
+            self._dd_serialized = f.read()
+        self._dd = DDict.attach(self._dd_serialized, timeout=300)
+        if self.launch == "colocated":
+            assert self.node_name==self._dd['node']
         toc = perf_counter()
         self.times["init"] = toc - tic
 
@@ -271,9 +278,10 @@ class Dragon_Sim_Client:
 
 # Dragon Client Class for Training
 class Dragon_Train_Client:
-    def __init__(self, cfg, rank: int, size: int):
+    def __init__(self, cfg, rank: int, size: int, node_name: str):
         self.rank = rank
         self.size = size
+        self.node_name = node_name
         self._dd_serialized = cfg.online.dragon.dictionary
         self.launch = cfg.online.launch
         self.ppn = cfg.ppn
@@ -311,7 +319,13 @@ class Dragon_Train_Client:
         """Initialize the client
         """
         tic = perf_counter()
-        self._dd = DDict.attach(self._dd_serialized, timeout=30)
+        # Reading from file is needed for now because when passing serialized DDict
+        # by command line arg all ranks see the one on the last node
+        with open(f'ddict_{self.node_name}','r') as f:
+            self._dd_serialized = f.read()
+        self._dd = DDict.attach(self._dd_serialized, timeout=300)
+        if self.launch == "colocated":
+            assert self.node_name==self._dd['node']
         toc = perf_counter()
         self.times['init'] = toc - tic
 

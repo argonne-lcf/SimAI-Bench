@@ -92,7 +92,7 @@ def main():
     elif args.backend=='dragon':
         try:
             from online_training.backends.dragon import Dragon_Sim_Client
-            client = Dragon_Sim_Client(args, rank, size)
+            client = Dragon_Sim_Client(args, rank, size, name)
         except Exception as e:
             logger.info('Could not import client, exception')
             logger.info(f'{e}')
