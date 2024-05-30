@@ -107,6 +107,10 @@ class GNN(nn.Module):
             #if comm.size > 1:
             #    halo_unique_mask = np.squeeze(self.client.get_tensor(hmask_key).astype('int64'))
 
+            # Delete the position and edge_index arrays since they are big and no longer needed
+            client.delete_array(pos_key)
+            client.delete_array(edge_key)
+
         else:
             main_path = train_cfg.data_path+"/"
             path_to_pos_full = main_path + pos_key

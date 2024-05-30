@@ -96,7 +96,10 @@ def onlineTrainLoop(cfg, comm, client, t_data, model, logger):
     if (num_val_tensors==0 and cfg.validation_split>0):
         if (comm.rank==0): logger.warning("Insufficient number of tensors for validation -- skipping it")
     if client.dataOverWr:
-        key_dataset = RankDataset(num_db_tensors,client.sim_head_rank,cfg.model,comm.rank)
+        if cfg.model=='gnn':
+            key_dataset = RankDataset(1,client.sim_head_rank,cfg.model,comm.rank)
+        else:
+            key_dataset = RankDataset(num_db_tensors,client.sim_head_rank,cfg.model,comm.rank)
 
     # While loop that checks when training data is available on database
     if (comm.rank == 0):

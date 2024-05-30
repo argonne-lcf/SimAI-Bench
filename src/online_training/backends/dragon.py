@@ -25,7 +25,10 @@ class Dragon_Sim_Client:
         self.node_name = node_name
         self.ppn = args.ppn
         self.rankl = self.rank%self.ppn
-        self.ow = True if args.problem_size=="debug" else False
+        if (args.overwrite=='yes' or args.problem_size=="debug"):
+            self.ow = True 
+        else:
+            self.ow =  False
         self.max_mem = args.db_max_mem_size*1024*1024*1024
         self.model = args.model
         self._dd = None
@@ -58,7 +61,7 @@ class Dragon_Sim_Client:
         if self.launch == "colocated":
             with open(f'ddict_{self.node_name}','r') as f:
                 self._dd_serialized = f.read()
-        self._dd = DDict.attach(self._dd_serialized, timeout=300)
+        self._dd = DDict.attach(self._dd_serialized, timeout=3600)
         if self.launch == "colocated":
             assert self.node_name==self._dd['node']
         toc = perf_counter()
@@ -325,7 +328,7 @@ class Dragon_Train_Client:
         if self.launch == "colocated":
             with open(f'ddict_{self.node_name}','r') as f:
                 self._dd_serialized = f.read()
-        self._dd = DDict.attach(self._dd_serialized, timeout=300)
+        self._dd = DDict.attach(self._dd_serialized, timeout=3600)
         if self.launch == "colocated":
             assert self.node_name==self._dd['node']
         toc = perf_counter()
@@ -380,6 +383,10 @@ class Dragon_Train_Client:
         rtime = perf_counter() - rtime
         self.times['tot_meta'] += rtime
 
+    # Delete array
+    def delete_array(self, key: str) -> None:
+        del self._dd[key]
+
     # Read the size information from DB
     def read_sizeInfo(self):
         while True:
@@ -393,8 +400,11 @@ class Dragon_Train_Client:
         self.num_tot_tensors = dataSizeInfo[3]
         self.num_local_tensors = dataSizeInfo[4]
         self.sim_head_rank = dataSizeInfo[5]
-        
-        max_batch_size = int(self.num_local_tensors/(self.ppn*self.ppd))
+       
+        if self.launch=='colocated': 
+            max_batch_size = int(self.num_local_tensors/(self.ppn*self.ppd))
+        elif self.launch=='clustered':
+            max_batch_size = int(self.num_tot_tensors/self.size)
         if (not self.global_shuffling):
             self.tensor_batch = max_batch_size
         else:

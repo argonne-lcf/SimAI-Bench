@@ -50,6 +50,7 @@ def main():
     parser.add_argument('--launch', default="colocated", type=str, help='Workflow deployment (colocated, clustered)')
     parser.add_argument('--db_nodes', default=1, type=int, help='Number of database nodes if using SmartSim')
     parser.add_argument('--db_max_mem_size', default=1, type=float, help='Maximum size of database in GB')
+    parser.add_argument('--overwrite', default='no', type=str, help='Overwrite the training data in staging area')
     args = parser.parse_args()
     
     # Set up logging
@@ -110,9 +111,10 @@ def main():
     comm.Barrier()
     if rank==0:
         logger.info('Setup metadata for ML problem \n')
-
+    
     # Emulate integration of PDEs with a do loop
     numts = 1000
+    success_iter = 7 if args.launch=='colocated' else 5
     success = 0
     tic_loop = perf_counter()
     for step in range(numts):
@@ -154,7 +156,7 @@ def main():
                     logger.warning(f'\tOut of memory in staging area, did not send training data')
 
             # Exit if model has converged to tolerence for 5 consecutive checks
-            if success>=7: 
+            if success>=success_iter: 
                 client.stop_train()
                 if rank==0:
                     logger.info("\nModel has converged to tolerence for 5 consecutive checks")

@@ -23,7 +23,10 @@ class SmartRedis_Sim_Client:
         self.size = size
         self.ppn = args.ppn
         self.rankl = self.rank%self.ppn
-        self.ow = True if args.problem_size=="debug" else False
+        if (args.overwrite=='yes' or args.problem_size=="debug"):
+            self.ow = True
+        else:
+            self.ow =  False        
         self.max_mem = args.db_max_mem_size*1024*1024*1024
         self.db_address = None
         self.model = args.model
@@ -389,6 +392,10 @@ class SmartRedis_Train_Client:
         self.client.put_tensor(key, np.array([value]))
         rtime = perf_counter() - rtime
         self.times['tot_meta'] += rtime
+
+    # Delete array
+    def delete_array(self, key: str) -> None:
+        self.client.delete_tensor(key)
 
     # Read the size information from DB
     def read_sizeInfo(self):
