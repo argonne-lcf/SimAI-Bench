@@ -55,8 +55,9 @@ class Dragon_Sim_Client:
         tic = perf_counter()
         # Reading from file is needed for now because when passing serialized DDict
         # by command line arg all ranks see the one on the last node
-        with open(f'ddict_{self.node_name}','r') as f:
-            self._dd_serialized = f.read()
+        if self.launch == "colocated":
+            with open(f'ddict_{self.node_name}','r') as f:
+                self._dd_serialized = f.read()
         self._dd = DDict.attach(self._dd_serialized, timeout=300)
         if self.launch == "colocated":
             assert self.node_name==self._dd['node']
@@ -321,8 +322,9 @@ class Dragon_Train_Client:
         tic = perf_counter()
         # Reading from file is needed for now because when passing serialized DDict
         # by command line arg all ranks see the one on the last node
-        with open(f'ddict_{self.node_name}','r') as f:
-            self._dd_serialized = f.read()
+        if self.launch == "colocated":
+            with open(f'ddict_{self.node_name}','r') as f:
+                self._dd_serialized = f.read()
         self._dd = DDict.attach(self._dd_serialized, timeout=300)
         if self.launch == "colocated":
             assert self.node_name==self._dd['node']

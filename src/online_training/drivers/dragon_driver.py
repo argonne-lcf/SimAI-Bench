@@ -361,7 +361,7 @@ def main(cfg: DictConfig):
         dd_policy = Policy(cpu_affinity=list(cfg.dict.cpu_bind)) if cfg.dict.cpu_bind else None
         dd = DDict(cfg.dict.managers_per_node, cfg.dict.num_nodes, 
                    total_mem_size, policy=dd_policy, timeout=3600,
-                   num_streams_per_manager=20)
+                   num_streams_per_manager=72)
         dd_serialized = dd.serialize()
         print("Launched the Dragon Dictionary \n", flush=True)
     
