@@ -125,7 +125,7 @@ def launch_coDB(cfg, nodelist, nNodes):
                                                     cfg.run_args.simprocs_pn)
 
         print("Launching training script ... ")
-        ml_model = exp.create_model("train_model", ml_settings)
+        ml_model = exp.create_model("train", ml_settings)
         exp.start(ml_model, block=True, summary=False)
         print("Done\n")
 

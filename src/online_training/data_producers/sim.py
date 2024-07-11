@@ -114,7 +114,7 @@ def main():
     
     # Emulate integration of PDEs with a do loop
     numts = 1000
-    success_iter = 7 if args.launch=='colocated' else 5
+    success_iter = 5
     success = 0
     tic_loop = perf_counter()
     for step in range(numts):

@@ -191,10 +191,10 @@ def main(cfg: DictConfig):
         logger.info("Saved model to disk\n")
 
     # Collect timing statistics for training
-    if (t_data.i_train>0):
-        if (comm.rank==0):
-            logger.info("Timing data:")
-        t_data.printTimeData(comm, logger)
+    #if (t_data.i_train>0):
+    #    if (comm.rank==0):
+    #        logger.info("Timing data:")
+    #    t_data.printTimeData(comm, logger)
 
     # Accumulate timing data for client and print summary
     client.collect_stats(comm)
