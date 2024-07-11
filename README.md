@@ -26,6 +26,7 @@ These benchmarks may be used to evaluate the performance and scalability of diff
 
 ### Other
 
+* mpi4py
 * [MPIPartition](https://github.com/ArgonneCPAC/MPIPartition)
 
 
@@ -44,21 +45,22 @@ These benchmarks may be used to evaluate the performance and scalability of diff
 * 0.0.1
     * Added an online training workflow for ML surrogate models implemented with SmartSim and Dragon
     * Tested on ALCF Polaris
-    * Work in progress
 
 
 ## Contributing
 
 1. Fork it (<https://github.com/argonne-lcf/SimAI-Bench/fork>)
+2. Cline it (`git clone https://github.com/username/SimAI-Bench.git`)
 2. Create your feature branch (`git checkout -b feature/fooBar`)
 3. Commit your changes (`git commit -am 'Add some fooBar'`)
-4. Push to the branch (`git push origin feature/fooBar`)
+4. Push to the branch (`git push -u origin feature/fooBar`)
 5. Create a new Pull Request
 
 
 ## Contributors
 
 Riccardo Balin, Argonne National Lab, rbalin@anl.gov
+
 Shivam Barwey, Argonne National Lab, sbarwey@anl.gov
 
 
