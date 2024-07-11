@@ -27,15 +27,15 @@ def train(comm, model, train_loader, optimizer, scaler, mixed_dtype,
 
     # Loop over mini-batches
     for batch_idx, data in enumerate(train_loader):
-            # Offload batch data
-            if (cfg.device != 'cpu'):
-               data = data.to(cfg.device)
+        # Offload batch data
+        if (cfg.device != 'cpu'):
+            data = data.to(cfg.device)
 
-            # Perform forward and backward passes
-            rtime = perf_counter()
-            optimizer.zero_grad()
-            with autocast(enabled=cfg.mixed_precision, dtype=mixed_dtype):
-                loss = model.module.training_step(data)
+        # Perform forward and backward passes
+        rtime = perf_counter()
+        optimizer.zero_grad()
+        with autocast(enabled=cfg.mixed_precision, dtype=mixed_dtype):
+            loss = model.module.training_step(data)
             if (cfg.mixed_precision):
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
@@ -50,14 +50,14 @@ def train(comm, model, train_loader, optimizer, scaler, mixed_dtype,
                 fact = float(1.0/t_data.i_compMiniBatch)
                 t_data.t_AveCompMiniBatch = fact*rtime + (1.0-fact)*t_data.t_AveCompMiniBatch            
 
-            # Update running loss
-            running_loss += loss
+        # Update running loss
+        running_loss += loss
 
-            # Print data for some ranks only
-            if (comm.rank==0 and (batch_idx)%10==0):
-                logger.debug(f'{comm.rank}: Train Epoch: {epoch+1} | ' + \
-                      f'[{batch_idx+1}/{num_batches}] | ' + \
-                      f'Loss: {loss.item():>8e}')
+        # Print data for some ranks only
+        if (comm.rank==0 and (batch_idx)%10==0):
+            logger.debug(f'{comm.rank}: Train Epoch: {epoch+1} | ' + \
+                         f'[{batch_idx+1}/{num_batches}] | ' + \
+                         f'Loss: {loss.item():>8e}')
 
     running_loss = running_loss.item() / num_batches
     return running_loss, t_data

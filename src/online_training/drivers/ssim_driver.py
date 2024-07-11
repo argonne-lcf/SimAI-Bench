@@ -100,8 +100,8 @@ def launch_coDB(cfg, nodelist, nNodes):
         if (cfg.train.config_name): ml_exe += f' --config-name {cfg.train.config_name}'
         ml_exe = ml_exe + f' ppn={cfg.run_args.mlprocs_pn}' \
                         + f' online.backend=smartredis' \
+                        + f' online.launch={cfg.database.deployment}' \
                         + f' online.simprocs={cfg.run_args.simprocs}' \
-                        + f' online.smartredis.db_launch={cfg.database.deployment}' \
                         + f' online.smartredis.db_nodes={cfg.run_args.db_nodes}'
         SSDB = colo_model.run_settings.env_vars['SSDB']
         if (cfg.database.launcher=='local'):
@@ -125,7 +125,7 @@ def launch_coDB(cfg, nodelist, nNodes):
                                                     cfg.run_args.simprocs_pn)
 
         print("Launching training script ... ")
-        ml_model = exp.create_model("train_model", ml_settings)
+        ml_model = exp.create_model("train", ml_settings)
         exp.start(ml_model, block=True, summary=False)
         print("Done\n")
 
@@ -162,11 +162,13 @@ def launch_clDB(cfg, nodelist, nNodes):
         }
     if (cfg.database.launcher=='local'): run_command = 'mpirun'
     elif (cfg.database.launcher=='pals'): run_command = 'mpiexec'
+    network = cfg.database.network_interface if type(cfg.database.network_interface)==str \
+                                             else OmegaConf.to_object(cfg.database.network_interface)  
     db = exp.create_database(port=PORT, 
                              batch=False,
                              db_nodes=cfg.run_args.db_nodes,
                              run_command=run_command,
-                             interface=OmegaConf.to_object(cfg.database.network_interface), 
+                             interface=network, 
                              hosts=dbNodes_list,
                              run_args=runArgs,
                              single_cmd=True,
@@ -218,8 +220,8 @@ def launch_clDB(cfg, nodelist, nNodes):
         if (cfg.train.config_name): ml_exe += f' --config-name {cfg.train.config_name}'
         ml_exe = ml_exe + f' ppn={cfg.run_args.mlprocs_pn}' \
                         + f' online.backend=smartredis' \
+                        + f' online.launch={cfg.database.deployment}' \
                         + f' online.simprocs={cfg.run_args.simprocs}' \
-                        + f' online.smartredis.db_launch={cfg.database.deployment}' \
                         + f' online.smartredis.db_nodes={cfg.run_args.db_nodes}'
         if (cfg.database.launcher=='local'):
             ml_settings = RunSettings('python',

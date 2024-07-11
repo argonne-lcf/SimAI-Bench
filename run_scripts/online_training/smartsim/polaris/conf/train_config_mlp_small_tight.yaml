@@ -1,8 +1,8 @@
 # General run config
 ppn: 1 # integer - number of MPI processes per node for ML training
 ppd: 1 # integer - number of MPI processes per device for ML training
-logging: "debug" # debug,info - type of logging desired
-device: "cpu" # cpu, cuda, xpu - device to train on
+logging: "debug" # no, debug, verbose-perf - type of logging desired
+device: "cuda" # cpu, cuda, xpu - device to train on
 model: "mlp" # mlp, gnn - model descriptor
 data_path: "" # string, synthetic - path to training data to load
 num_samples_per_rank: 111 # integer - number of data samples per rank. 111 - 20x mini_batch size
@@ -23,15 +23,15 @@ save_db: False # True, False - save database contents at the end of trainint to 
 
 # Online train config
 online:
-    backend: "smartsim" # smartsim - descriptor for workflow driver
+    backend: "smartredis" # smartsim - descriptor for workflow driver
     global_shuffling: False # True, False - enforce shuffling of DB tensors at every epoch
     batch: 0 # integer - number of tensors to grab from database at once for global shuffling, 0: grab all tensors at once, recommended
     simprocs: 1 # int - number of MPI processes simulation is running with
     checkpoints: 20 # int - frequency in epochs to share model checkpoint
     smartredis:
-        db_launch: "" # colocated,clustered - deployment method of SmartSim database
+        launch: "" # colocated,clustered - deployment method of SmartSim database
         db_nodes: 1 # int - number of nodes dabase is sharded across. Always 1 for colocated DB.
-        inference_device: "CPU" # CPU,GPU,GPU:# - device string for inference with RedisAI from data producer
+        inference_device: "" # CPU,GPU,GPU:# - device string for inference with RedisAI from data producer
  
 # Model specific config
 mlp:

@@ -11,25 +11,27 @@ try:
 except:
     pass
 
-from smartredis import Client
+import dragon
+from dragon.data.ddict.ddict import DDict
+#from dragon.data.distdictionary.dragon_dict import DragonDict
 
-# SmartRedis Client Class for the Simulation (Data Producer)
-class SmartRedis_Sim_Client:
-    def __init__(self, args, rank: int, size: int):
-        self.client = None
+# Dragon Client Class for the Simulation (Data Producer)
+class Dragon_Sim_Client:
+    def __init__(self, args, rank: int, size: int, node_name: str):
+        self._dd_serialized = args.dictionary
         self.launch = args.launch
-        self.db_nodes = args.db_nodes
         self.rank = rank
         self.size = size
+        self.node_name = node_name
         self.ppn = args.ppn
         self.rankl = self.rank%self.ppn
         if (args.overwrite=='yes' or args.problem_size=="debug"):
-            self.ow = True
+            self.ow = True 
         else:
-            self.ow =  False        
+            self.ow =  False
         self.max_mem = args.db_max_mem_size*1024*1024*1024
-        self.db_address = None
         self.model = args.model
+        self._dd = None
 
         self.times = {
             "init": 0.,
@@ -37,15 +39,11 @@ class SmartRedis_Sim_Client:
             "tot_train": 0.,
             "train": [],
             "tot_infer": 0.,
-            "infer": [],
-            "infer_send": [],
-            "infer_run": [],
-            "infer_rcv": []
+            "infer": []
         }
         self.time_stats = {}
 
         if (self.launch == "colocated"):
-            self.db_nodes = 1
             self.head_rank = self.rank//self.ppn * self.ppn
         elif (self.launch == "clustered"):
             self.ppn = size
@@ -57,12 +55,15 @@ class SmartRedis_Sim_Client:
 
     # Initialize client
     def init(self):
-        self.db_address = os.environ["SSDB"]
         tic = perf_counter()
-        if (self.db_nodes==1):
-            self.client = Client(cluster=False)
-        else:
-            self.client = Client(cluster=True)
+        # Reading from file is needed for now because when passing serialized DDict
+        # by command line arg all ranks see the one on the last node
+        if self.launch == "colocated":
+            with open(f'ddict_{self.node_name}','r') as f:
+                self._dd_serialized = f.read()
+        self._dd = DDict.attach(self._dd_serialized, timeout=3600)
+        if self.launch == "colocated":
+            assert self.node_name==self._dd['node']
         toc = perf_counter()
         self.times["init"] = toc - tic
 
@@ -70,8 +71,20 @@ class SmartRedis_Sim_Client:
     def destroy(self):
         """Destroy the client
         """
-        pass
-          
+        self._dd.detach()
+
+    # General method to put an object to the Dictionary
+    def put(self, key: str, val) -> None:
+        self._dd[key] = val
+
+    # General method to get an object from the Dictionary
+    def get(self, key: str):
+        return self._dd[key]
+    
+    # General method to see if key exists in the Dictionary
+    def key_exists(self, key: str) -> bool:
+        return key in self._dd.keys()
+
     # Set up training case and write metadata
     def setup_training_problem(self, coords: np.ndarray, 
                                data_info: dict) -> None:
@@ -79,7 +92,7 @@ class SmartRedis_Sim_Client:
             # Run-check
             arr = np.array([1], dtype=np.int64)
             tic = perf_counter()
-            self.client.put_tensor('sim-run', arr)
+            self.put('sim_run', arr)
             toc = perf_counter()
             self.times["tot_meta"] += toc - tic
 
@@ -92,7 +105,7 @@ class SmartRedis_Sim_Client:
             dataSizeInfo[4] = self.ppn
             dataSizeInfo[5] = self.head_rank
             tic = perf_counter()
-            self.client.put_tensor('sizeInfo', dataSizeInfo)
+            self.put('sizeInfo', dataSizeInfo)
             toc = perf_counter()
             self.times["tot_meta"] += toc - tic
 
@@ -102,7 +115,7 @@ class SmartRedis_Sim_Client:
             else:
                 arr = np.array([0], dtype=np.int64)
             tic = perf_counter()
-            self.client.put_tensor('tensor-ow', arr)
+            self.put('tensor-ow', arr)
             toc = perf_counter()
             self.times["tot_meta"] += toc - tic
 
@@ -117,8 +130,8 @@ class SmartRedis_Sim_Client:
         self.coords = coords
         self.edge_index = knn_graph(torch.from_numpy(coords), k=2, loop=False).numpy()
         tic = perf_counter()
-        self.client.put_tensor(f'pos_node_{self.rank}', self.coords)
-        self.client.put_tensor(f'edge_index_{self.rank}', self.edge_index)
+        self.put(f'pos_node_{self.rank}', self.coords)
+        self.put(f'edge_index_{self.rank}', self.edge_index)
         toc = perf_counter()
         self.times["tot_meta"] += toc - tic
     
@@ -127,7 +140,7 @@ class SmartRedis_Sim_Client:
         if self.rank==self.head_rank:
             arr = np.array([0], dtype=np.int64)
             tic = perf_counter()
-            self.client.put_tensor('sim-run', arr)
+            self.put('sim-run', arr)
             toc = perf_counter()
             self.times["tot_meta"] += toc - tic
         
@@ -137,41 +150,41 @@ class SmartRedis_Sim_Client:
             key = 'x.'+str(self.rank)
         else:
             key = 'x.'+str(self.rank)+'.'+str(step)
+        if (self.rank==0):
+            print(f'\tSending training data with key {key} and shape {array.shape}', flush=True)
         tic = perf_counter()
-        self.client.put_tensor(key, array)
+        self.put(key, array)
         toc = perf_counter()
         self.times["tot_train"] += toc - tic
         self.times["train"].append(toc - tic)
 
     # Check DB memory
     def check_mem(self, array: np.ndarray) -> bool:
-        tic = perf_counter()
-        db_info=self.client.get_db_node_info([self.db_address])[0]
-        toc = perf_counter()
-        self.times["tot_meta"] += toc - tic
-        used_mem = float(db_info['Memory']['used_memory'])
-        free_mem = self.max_mem - used_mem
-        if (sys.getsizeof(array) < free_mem):
-            return True
-        else:
-            return False
+        key = 'asdf_{self.rank}'
+        #try:
+        #    tic = perf_counter()
+        #    self.put(key,array)
+        #    del self._dd[key]
+        #    toc = perf_counter()
+        #    self.times["tot_meta"] += toc - tic
+        #    return True
+        #except:
+        #    return False
+        return True
 
     # Send time step
     def send_step(self, step: int):
         if self.rank==self.head_rank:
             step_arr = np.array([step], dtype=np.int64)
             tic = perf_counter()
-            self.client.put_tensor('step', step_arr)
+            self.put('step', step_arr)
             toc = perf_counter()
             self.times["tot_meta"] += toc - tic
     
     # Check to see if model exists in DB
     def model_exists(self, comm) -> bool:
-        local_exists = 0
         tic = perf_counter()
-        if self.client.key_exists(f'{self.model}_bytes'): local_exists = 1
-        if local_exists==0:
-            if self.client.model_exists(self.model): local_exists = 1
+        local_exists = 1 if self.key_exists(self.model) else 0
         toc = perf_counter()
         self.times["tot_meta"] += toc - tic
         global_exists = comm.allreduce(local_exists)
@@ -186,47 +199,24 @@ class SmartRedis_Sim_Client:
         if inputs.ndim<2:
             inputs = np.expand_dims(inputs, axis=1)
         tic = perf_counter()
-        if self.client.key_exists(f'{self.model}_bytes'):
-            buffer = self.client.get_bytes(self.model)
-            #buffer = io.BytesIO(model_bytes)
-            model_jit = torch.jit.load(buffer, map_location='cpu')
-            x = torch.from_numpy(inputs).type(torch.float32)
-            if self.model=='mlp':
-                ticc = perf_counter()
-                with torch.no_grad():
-                    model_jit.to(f'cuda:{3-self.rankl}')
-                    x = x.to(f'cuda:{3-self.rankl}')
-                    pred = model_jit(x).cpu().numpy()
-                tocc = perf_counter()
-                self.times["infer_run"].append(tocc - ticc)
-            elif self.model=='gnn':
-                edge_index = torch.from_numpy(self.edge_index).type(torch.int64)
-                pos = torch.from_numpy(self.coords).type(torch.float32)
-                with torch.no_grad():
-                    model_jit.to(f'cuda:{3-self.rankl}')
-                    x = x.to(f'cuda:{3-self.rankl}')
-                    edge_index = edge_index.to(f'cuda:{3-self.rankl}')
-                    pos = pos.to(f'cuda:{3-self.rankl}')
-                    pred = model_jit(x, edge_index, pos).cpu().numpy()
-        else:
-            input_key = f"{self.model}_inputs_{self.rank}"
-            output_key = f"{self.model}_outputs_{self.rank}"
-            ticc = perf_counter()
-            self.client.put_tensor(input_key, inputs.astype(np.float32))
-            tocc = perf_counter()
-            self.times["infer_send"].append(tocc - ticc)
-            ticc = perf_counter()
-            #self.client.run_model(self.model, inputs=[input_key], 
-            #                      outputs=[output_key])
-            self.client.run_model_multigpu(self.model, self.rankl, 0, 4,
-                                           inputs=[input_key], 
-                                           outputs=[output_key])
-            tocc = perf_counter()
-            self.times["infer_run"].append(tocc - ticc)
-            ticc = perf_counter()
-            pred = self.client.get_tensor(output_key).astype(np.float32)
-            tocc = perf_counter()
-            self.times["infer_rcv"].append(tocc - ticc)
+        model_bytes = self.get(self.model)
+        buffer = io.BytesIO(model_bytes)
+        model_jit = torch.jit.load(buffer, map_location='cpu')
+        x = torch.from_numpy(inputs).type(torch.float32)
+        if (self.model=="gnn"):
+            edge_index = torch.from_numpy(self.edge_index).type(torch.int64)
+            pos = torch.from_numpy(self.coords).type(torch.float32)
+            with torch.no_grad():
+                model_jit.to(f'cuda:{3-self.rankl}')
+                x = x.to(f'cuda:{3-self.rankl}')
+                edge_index = edge_index.to(f'cuda:{3-self.rankl}')
+                pos = pos.to(f'cuda:{3-self.rankl}')
+                pred = model_jit(x, edge_index, pos).cpu().numpy()
+        elif (self.model=='mlp'):
+            with torch.no_grad():
+                model_jit.to(f'cuda:{3-self.rankl}')
+                x = x.to(f'cuda:{3-self.rankl}')
+                pred = model_jit(x).cpu().numpy()
         toc = perf_counter()
         self.times["tot_infer"] += toc - tic
         self.times["infer"].append(toc - tic)
@@ -237,7 +227,7 @@ class SmartRedis_Sim_Client:
     # Check status of training
     def check_train_status(self) -> None:
         while True:
-            if (self.client.poll_tensor('train-run',0,1)):
+            if self.key_exists('train-run'):
                 break
 
     # Collect timing statistics across ranks
@@ -290,19 +280,20 @@ class SmartRedis_Sim_Client:
 ##########################################################
 
 
-# SmartRedis Client Class for Training
-class SmartRedis_Train_Client:
-    def __init__(self, cfg, rank: int, size: int):
+# Dragon Client Class for Training
+class Dragon_Train_Client:
+    def __init__(self, cfg, rank: int, size: int, node_name: str):
         self.rank = rank
         self.size = size
+        self.node_name = node_name
+        self._dd_serialized = cfg.online.dragon.dictionary
         self.launch = cfg.online.launch
-        self.db_nodes = cfg.online.smartredis.db_nodes
         self.ppn = cfg.ppn
         self.ppd = cfg.ppd
         self.global_shuffling = cfg.online.global_shuffling
         self.batch = cfg.online.batch
 
-        self.client = None
+        self._dd = None
         self.npts = None
         self.ndTot = None
         self.ndIn = None
@@ -329,18 +320,17 @@ class SmartRedis_Train_Client:
 
     # Initialize client
     def init(self):
-        """Initialize the SmartRedis client
+        """Initialize the client
         """
-        # Read the address of the co-located database first
-        if (self.launch=='colocated'):
-            address = os.environ['SSDB']
-        else:
-            address = None
-
-        # Initialize Redis clients on each rank 
-        cluster = False if self.db_nodes==1 else True
         tic = perf_counter()
-        self.client = Client(address=address, cluster=cluster)
+        # Reading from file is needed for now because when passing serialized DDict
+        # by command line arg all ranks see the one on the last node
+        if self.launch == "colocated":
+            with open(f'ddict_{self.node_name}','r') as f:
+                self._dd_serialized = f.read()
+        self._dd = DDict.attach(self._dd_serialized, timeout=3600)
+        if self.launch == "colocated":
+            assert self.node_name==self._dd['node']
         toc = perf_counter()
         self.times['init'] = toc - tic
 
@@ -348,16 +338,16 @@ class SmartRedis_Train_Client:
     def destroy(self):
         """Destroy the client
         """
-        pass
-          
+        self._dd.detach()
+
     # Check if tensor key exists
     def key_exists(self, key: str) -> bool:
-        return self.client.poll_tensor(key,0,1)
+        return key in self._dd.keys()
 
     # Get array (tensor) from DB
     def get_array(self, key: str, comm_type: str) -> np.ndarray:
         rtime = perf_counter()
-        array = self.client.get_tensor(key)
+        array = self._dd[key]
         rtime = perf_counter() - rtime
         if 'train' in comm_type:
             self.times["tot_train"] += rtime
@@ -367,10 +357,10 @@ class SmartRedis_Train_Client:
             self.times['tot_meta'] += rtime
         return array
     
-    # Get value from DB
+    # Get value from Dictionary
     def get_value(self, key: str):
         rtime = perf_counter()
-        val = self.client.get_tensor(key)[0]
+        val = self._dd[key][0]
         rtime = perf_counter() - rtime
         self.times['tot_meta'] += rtime
         return val
@@ -378,7 +368,7 @@ class SmartRedis_Train_Client:
     # Put array (tensor) to DB
     def put_array(self, key: str, array: np.ndarray, comm_type: str) -> None:
         rtime = perf_counter()
-        self.client.put_tensor(key, array)
+        self._dd[key] = array
         rtime = perf_counter() - rtime
         if 'train' in comm_type:
             self.times["tot_train"] += rtime
@@ -389,13 +379,13 @@ class SmartRedis_Train_Client:
     # Put value to DB
     def put_value(self, key: str, value) -> None:
         rtime = perf_counter()
-        self.client.put_tensor(key, np.array([value]))
+        self._dd[key] = np.array([value])
         rtime = perf_counter() - rtime
         self.times['tot_meta'] += rtime
 
     # Delete array
     def delete_array(self, key: str) -> None:
-        self.client.delete_tensor(key)
+        del self._dd[key]
 
     # Read the size information from DB
     def read_sizeInfo(self):
@@ -410,8 +400,11 @@ class SmartRedis_Train_Client:
         self.num_tot_tensors = dataSizeInfo[3]
         self.num_local_tensors = dataSizeInfo[4]
         self.sim_head_rank = dataSizeInfo[5]
-        
-        max_batch_size = int(self.num_local_tensors/(self.ppn*self.ppd))
+       
+        if self.launch=='colocated': 
+            max_batch_size = int(self.num_local_tensors/(self.ppn*self.ppd))
+        elif self.launch=='clustered':
+            max_batch_size = int(self.num_tot_tensors/self.size)
         if (not self.global_shuffling):
             self.tensor_batch = max_batch_size
         else:
@@ -434,23 +427,17 @@ class SmartRedis_Train_Client:
     
     # Check if model key exists
     def model_exists(self, key: str) -> bool:
-        return self.client.model_exists(key)
+        return self.key_exists(key)
     
     # Check delete model key
     def delete_model(self, key: str) -> None:
-        self.client.delete_model(key)
+        del self._dd[key]
 
     # Put model to DB
     def put_model(self, key: str, model_bytes: io.BytesIO,
                   device: Optional[str] = None) -> None:
-        if key=='mlp' and device:
-            if device=='CPU' or ':' in device:
-                self.client.set_model(key, model_bytes.getvalue(), 'TORCH', device)
-            elif device=='GPU':
-                self.client.set_model_multigpu(key, model_bytes.getvalue(), 'TORCH', 0, 4)
-        else:
-            self.client.put_bytes(key, model_bytes)
-            self.put_value(f'{key}_bytes',1)
+        self._dd[key] = model_bytes.getvalue()
+        
 
     # Collect timing statistics across ranks
     def collect_stats(self, comm):
@@ -491,3 +478,4 @@ class SmartRedis_Train_Client:
                            f"avg = {val['avg']:>8e} , " + \
                            f"std = {val['std']:>8e} "
             logger.info(f"SmartRedis {key} [s] " + stats_string)
+

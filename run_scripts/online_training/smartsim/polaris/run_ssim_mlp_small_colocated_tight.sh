@@ -1,16 +1,7 @@
 #!/bin/bash
 
 # Set env
-#module load conda/2023-10-04
-#conda activate
-#source /eagle/datascience/balin/Polaris/SmartSim_envs/venv_conda-2023-10-04/_ssim_env_24_4/bin/activate
-module use /soft/modulefiles
-module load conda/2024-04-25
-conda activate
-source /eagle/datascience/balin/Polaris/SmartSim_envs/venv_conda-2024-04-25/_ssim_env/bin/activate
-export MPICH_GPU_SUPPORT_ENABLED=0
-export TORCH_PATH=$( python -c 'import torch; print(torch.__path__[0])' )
-export LD_LIBRARY_PATH=$TORCH_PATH/lib:$LD_LIBRARY_PATH
+#source /eagle/datascience/balin/SimAI-Bench/env_ssim.sh
 echo Loaded modules:
 module list
 
@@ -22,7 +13,7 @@ ML_EXE=$BASE_DIR/src/online_training/train/train.py
 DRIVER_CONFIG_PATH=$PWD/conf
 DRIVER_CONFIG_NAME="ssim_config_colocated"
 TRAIN_CONFIG_PATH=$PWD/conf
-TRAIN_CONFIG_NAME="train_config_mlp_debug"
+TRAIN_CONFIG_NAME="train_config_mlp_small_tight"
 
 # Set up run
 NODES=$(cat $PBS_NODEFILE | wc -l)
@@ -48,9 +39,8 @@ export SR_CMD_TIMEOUT=1000 # default is 100 ms
 export SR_THREAD_COUNT=4 # default is 4
 
 # Run
-SIM_ARGS="--model\=mlp --problem_size\=debug --db_launch\=colocated --ppn\=${SIM_PROCS_PER_NODE}  --tolerance\=0.002"
+SIM_ARGS="--backend\=smartredis --model\=mlp --problem_size\=small --launch\=colocated --ppn\=${SIM_PROCS_PER_NODE} --tolerance\=0.004 --train_interval\=10 --db_max_mem_size\=0.1"
 python $DRIVER --config-path $DRIVER_CONFIG_PATH --config-name $DRIVER_CONFIG_NAME \
-    database.deployment="colocated" \
     sim.executable=$SIM_EXE sim.arguments="${SIM_ARGS}" \
     train.executable=$ML_EXE train.config_path=${TRAIN_CONFIG_PATH} train.config_name=${TRAIN_CONFIG_NAME} \
     run_args.simprocs=${SIM_RANKS} run_args.simprocs_pn=${SIM_PROCS_PER_NODE} \

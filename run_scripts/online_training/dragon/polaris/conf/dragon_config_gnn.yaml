@@ -1,12 +1,12 @@
 # Workflow config
 scheduler: "pbs" # pbs,local - job scheduler
-deployment: "mixed" # colocated,clustered,mixed - deployment approach for workflow components
+deployment: "mixed" # colocated,clustered - deployment approach for workflow components
 
 # Dragon Distributed Dictionary config
 dict:
     num_nodes: 1 # int - number of nodes across which to launch the dictionary
     managers_per_node: 1 # int - number of dictionary managers per node
-    mem_size_per_node: 1 # int - managed memory size for each dictionary node in GB
+    total_mem_size: 64 # int - total managed memory size for dictionary in GB
     cpu_bind: [] # list - CPU binding for the dictionary
 
 # Simulation config
@@ -16,7 +16,7 @@ sim:
     num_nodes: 1 # int - number of nodes across which to launch the simulation
     procs: 1 # integer - number of MPI processes for simulation
     procs_pn: 1 # integer - number of MPI processes per node for simulation
-    cpu_bind: [] # list - CPU binding for simulation
+    cpu_bind: [1,8,16,24] # list - CPU binding for simulation
 
 # Distributed training config
 train:
@@ -26,6 +26,6 @@ train:
     num_nodes: 1 # int - number of nodes across which to launch ML training
     procs: 1 # integer - number of MPI processes for ML training
     procs_pn: 1 # integer - number of MPI processes per node for ML training
-    cpu_bind: [] # list - CPU binding for ML training
+    cpu_bind: [4,12,20,28] # list - CPU binding for ML training
 
    

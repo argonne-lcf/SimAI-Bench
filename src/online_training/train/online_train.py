@@ -32,7 +32,7 @@ def setup_online_dataloaders(cfg, comm, dataset, batch_size, split: List[float])
     generator = torch.Generator().manual_seed(12345)
     train_dataset, val_dataset = random_split(dataset, split, generator=generator)
  
-    if (cfg.online.smartredis.db_launch=="colocated"):
+    if (cfg.online.launch=="colocated"):
         replicas = cfg.ppn*cfg.ppd
         rank_arg = comm.rankl
     else:
@@ -89,18 +89,21 @@ def onlineTrainLoop(cfg, comm, client, t_data, model, logger):
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=500, factor=0.5)
 
     # Create training and validation Datasets
-    num_db_tensors = client.num_db_tensors
+    num_db_tensors = client.num_local_tensors
     num_val_tensors = int(num_db_tensors*cfg.validation_split)
     num_train_tensors = num_db_tensors - num_val_tensors
     tensor_split = [1-cfg.validation_split, cfg.validation_split]
     if (num_val_tensors==0 and cfg.validation_split>0):
         if (comm.rank==0): logger.warning("Insufficient number of tensors for validation -- skipping it")
     if client.dataOverWr:
-        key_dataset = RankDataset(num_db_tensors,client.head_rank,cfg.model,comm.rank)
+        if cfg.model=='gnn':
+            key_dataset = RankDataset(1,client.sim_head_rank,cfg.model,comm.rank)
+        else:
+            key_dataset = RankDataset(num_db_tensors,client.sim_head_rank,cfg.model,comm.rank)
 
     # While loop that checks when training data is available on database
     if (comm.rank == 0):
-        logger.info("Waiting for training data to be populated in DB ...")
+        logger.info("Waiting for training data to be populated ...")
     while True:
         if client.key_exists("step"):
             step = client.get_value('step')
@@ -136,7 +139,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model, logger):
                 if cfg.model=="gnn": 
                     num_db_tensors = 1
                     client.tensor_batch =  len(step_list)
-                key_dataset = RankStepDataset(num_db_tensors, step_list, client.head_rank, cfg.model, comm.rank)
+                key_dataset = RankStepDataset(num_db_tensors, step_list, client.sim_head_rank, cfg.model, comm.rank)
             train_tensor_loader, \
                 train_sampler, \
                 val_tensor_loader = setup_online_dataloaders(cfg, comm, key_dataset, client.tensor_batch, 
@@ -205,22 +208,16 @@ def onlineTrainLoop(cfg, comm, client, t_data, model, logger):
 
         # Share model checkpoint
         if ((iepoch+1)%cfg.online.checkpoints==0):
-            if (comm.rankl==0):
+            if comm.rank==client.head_rank:
                 jit_model = model.module.script_model()
-                #model_arr = np.array([model_bytes])
-                #client.client.put_tensor(cfg.model,model_arr)
-                if (cfg.model=="gnn"):
-                    torch.jit.save(jit_model, f"/tmp/{cfg.model}.pt")
-                else:
-                    buffer = io.BytesIO()
-                    torch.jit.save(jit_model, buffer)
-                    model_bytes = buffer.getvalue()
-                    #if client.model_exists(cfg.model):
-                    #    client.delete_model(cfg.model)
-                    client.put_model(cfg.model, model_bytes,
-                                     device=cfg.online.smartredis.inference_device)
+                buffer = io.BytesIO()
+                torch.jit.save(jit_model, buffer)
+                #if client.model_exists(cfg.model):
+                #    client.delete_model(cfg.model)
+                client.put_model(cfg.model, buffer,
+                                 device=cfg.online.smartredis.inference_device)
             if (comm.rank==0):
-                logger.info("Shared model checkpoint")
+                logger.info("Shared model checkpoint\n")
 
         iepoch = iepoch + 1 
 
@@ -229,7 +226,7 @@ def onlineTrainLoop(cfg, comm, client, t_data, model, logger):
 
 
     # Sync with simulation
-    if comm.rankl==0:
+    if comm.rank==client.head_rank:
         client.put_value('train-run', 0)
  
     sample_data = next(iter(train_loader)) 

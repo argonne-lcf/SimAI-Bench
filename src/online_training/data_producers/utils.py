@@ -3,7 +3,8 @@ import logging
 from gmpy2 import is_square
 import numpy as np
 import math
-from os.path import abspath
+import os
+from mpipartition import Partition
 
 import mpi4py
 mpi4py.rc.initialize = False
@@ -12,12 +13,12 @@ from mpi4py import MPI
 PI = math.pi
 
 # Generate training data for each model
-def generate_training_data(args, comm_info: Tuple[int,int], 
+def generate_training_data(args, comm, 
                            step: Optional[int] = 0) -> Tuple[np.ndarray, np.ndarray, dict]:
     """Generate training data for each model
     """
-    rank = comm_info[0]
-    size = comm_info[1]
+    rank = comm.Get_rank()
+    size = comm.Get_size()
     random_seed = 12345 + 1000*rank
     rng = np.random.default_rng(seed=random_seed)
     if (args.problem_size=="debug"):
@@ -29,17 +30,111 @@ def generate_training_data(args, comm_info: Tuple[int,int],
         y = (y - (-1.0875)) / (1.0986 - (-1.0875)) # min-max scaling
         data = np.vstack((coords,y)).T
     elif (args.problem_size=="small"):
-        assert is_square(size) or size==1, "Number of MPI ranks must be square or 1"
+        #assert is_square(size) or size==1, "Number of MPI ranks must be square or 1"
         N = 32
         n_samples = N**2
         ndIn = 1
         ndTot = 2
-        x, y = partition_domain((-2*PI, 2*PI), (-2*PI, 2*PI), N, size, rank)
+        #x, y = partition_domain((-2*PI, 2*PI), (-2*PI, 2*PI), N, size, rank)
+        partition = Partition(dimensions=2, comm=comm)
+        part_origin = partition.origin
+        part_extent = partition.extent
+        x = np.linspace(part_origin[0],part_origin[0]+part_extent[0],num=N)*4*PI-2*PI
+        y = np.linspace(part_origin[1],part_origin[1]+part_extent[1],num=N)*4*PI-2*PI
         x, y = np.meshgrid(x, y)
         coords = np.vstack((x.flatten(),y.flatten())).T
-        u = np.sin(0.1*step)*np.sin(x)*np.sin(y)
-        udt = np.sin(0.1*(step+1))*np.sin(x)*np.sin(y)
-        data = np.vstack((u.flatten(),udt.flatten())).T
+        r = np.sqrt(x**2+y**2)
+        period = 60
+        freq = 2*PI/period
+        u = np.sin(2.0*r-freq*step)/(r+1.0)
+        udt = np.sin(2.0*r-freq*(step+1))/(r+1.0)
+        data = np.empty((n_samples,ndTot))
+        data[:,0] = u.flatten() 
+        data[:,1] = udt.flatten() 
+    elif (args.problem_size=="medium"):
+        #assert is_square(size) or size==1, "Number of MPI ranks must be square or 1"
+        N = 256
+        n_samples = N**2
+        ndIn = 2
+        ndTot = 4
+        #x, y = partition_domain((-2*PI, 2*PI), (-2*PI, 2*PI), N, size, rank)
+        partition = Partition(dimensions=2, comm=comm)
+        part_origin = partition.origin
+        part_extent = partition.extent
+        x = np.linspace(part_origin[0],part_origin[0]+part_extent[0],num=N)*4*PI-2*PI
+        y = np.linspace(part_origin[1],part_origin[1]+part_extent[1],num=N)*4*PI-2*PI
+        x, y = np.meshgrid(x, y)
+        coords = np.vstack((x.flatten(),y.flatten())).T
+        r = np.sqrt(x**2+y**2)
+        period = 100
+        freq = 2*PI/period
+        u = np.sin(2.0*r-freq*step)/(r+1.0)
+        udt = np.sin(2.0*r-freq*(step+1))/(r+1.0)
+        v = np.cos(2.0*r-freq*step)/(r+1.0)
+        vdt = np.cos(2.0*r-freq*(step+1))/(r+1.0)
+        data = np.empty((n_samples,ndTot))
+        data[:,0] = u.flatten() 
+        data[:,1] = v.flatten() 
+        data[:,2] = udt.flatten() 
+        data[:,3] = vdt.flatten() 
+    elif (args.problem_size=="large"):
+        N = 100
+        n_samples = N**3
+        ndIn = 3
+        ndTot = 6
+        partition = Partition(dimensions=3, comm=comm)
+        part_origin = partition.origin
+        part_extent = partition.extent
+        x = np.linspace(part_origin[0],part_origin[0]+part_extent[0],num=N)*4*PI-2*PI
+        y = np.linspace(part_origin[1],part_origin[1]+part_extent[1],num=N)*4*PI-2*PI
+        z = np.linspace(part_origin[2],part_origin[2]+part_extent[2],num=N)*4*PI-2*PI
+        x, y, z = np.meshgrid(x, y, z)
+        coords = np.vstack((x.flatten(),y.flatten(),z.flatten())).T
+        r = np.sqrt(x**2+y**2+z**2)
+        period = 200
+        freq = 2*PI/period
+        u = np.sin(2.0*r-freq*step)/(r+1.0)
+        udt = np.sin(2.0*r-freq*(step+1))/(r+1.0)
+        v = np.cos(2.0*r-freq*step)/(r+1.0)
+        vdt = np.cos(2.0*r-freq*(step+1))/(r+1.0)
+        w = np.sin(2.0*r-freq*step)**2/(r+1.0)
+        wdt = np.sin(2.0*r-freq*(step+1))**2/(r+1.0)
+        data = np.empty((n_samples,ndTot))
+        data[:,0] = u.flatten() 
+        data[:,1] = v.flatten() 
+        data[:,2] = w.flatten() 
+        data[:,3] = udt.flatten() 
+        data[:,4] = vdt.flatten() 
+        data[:,5] = wdt.flatten() 
+    elif (args.problem_size=="very_large"):
+        N = 128
+        n_samples = N**3
+        ndIn = 3
+        ndTot = 6
+        partition = Partition(dimensions=3, comm=comm)
+        part_origin = partition.origin
+        part_extent = partition.extent
+        x = np.linspace(part_origin[0],part_origin[0]+part_extent[0],num=N)*4*PI-2*PI
+        y = np.linspace(part_origin[1],part_origin[1]+part_extent[1],num=N)*4*PI-2*PI
+        z = np.linspace(part_origin[2],part_origin[2]+part_extent[2],num=N)*4*PI-2*PI
+        x, y, z = np.meshgrid(x, y, z)
+        coords = np.vstack((x.flatten(),y.flatten(),z.flatten())).T
+        r = np.sqrt(x**2+y**2+z**2)
+        period = 200
+        freq = 2*PI/period
+        u = np.sin(2.0*r-freq*step)/(r+1.0)
+        udt = np.sin(2.0*r-freq*(step+1))/(r+1.0)
+        v = np.cos(2.0*r-freq*step)/(r+1.0)
+        vdt = np.cos(2.0*r-freq*(step+1))/(r+1.0)
+        w = np.sin(2.0*r-freq*step)**2/(r+1.0)
+        wdt = np.sin(2.0*r-freq*(step+1))**2/(r+1.0)
+        data = np.empty((n_samples,ndTot))
+        data[:,0] = u.flatten() 
+        data[:,1] = v.flatten() 
+        data[:,2] = w.flatten() 
+        data[:,3] = udt.flatten() 
+        data[:,4] = vdt.flatten() 
+        data[:,5] = wdt.flatten() 
 
     return_dict = {
         "n_samples": n_samples,
@@ -96,7 +191,7 @@ class MPIFileHandler(logging.FileHandler):
                  encoding='utf-8',  
                  delay=False,
                  comm=MPI.COMM_WORLD ):                                                
-        self.baseFilename = abspath(filename)                           
+        self.baseFilename = os.path.abspath('/'.join([os.getcwd(), filename]))                        
         self.mode = mode                                                        
         self.encoding = encoding                                            
         self.comm = comm                                                        
@@ -137,7 +232,7 @@ class MPIFileHandler(logging.FileHandler):
         except Exception:
             self.handleError(record)
                                                          
-    def close(self):                                                            
+    def close(self):
         if self.stream:                                                         
             self.stream.Sync()                                                  
             self.stream.Close()                                                 

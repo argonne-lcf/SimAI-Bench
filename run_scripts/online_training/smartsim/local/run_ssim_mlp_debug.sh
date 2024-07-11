@@ -16,7 +16,7 @@ echo Number of ML ranks: $ML_RANKS
 echo
 
 # Run
-SIM_ARGS="--model\=mlp --problem_size\=debug --db_launch\=colocated --ppn\=${SIM_RANKS} --tolerance\=0.002"
+SIM_ARGS="--backend\=smartredis --model\=mlp --problem_size\=debug --launch\=colocated --ppn\=${SIM_RANKS} --tolerance\=0.002"
 python $DRIVER \
     database.network_interface=lo database.launcher=local \
     sim.executable=$SIM_EXE sim.arguments="${SIM_ARGS}" \

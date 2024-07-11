@@ -8,10 +8,16 @@ from time import perf_counter
 import random
 import datetime
 import logging
+import socket
+import psutil
+
+# Import MPI before torch to avoid error
+import mpi4py
+mpi4py.rc.initialize = False
+from mpi4py import MPI
 
 # Import ML libraries
 import torch
-import socket
 import torch.distributed as dist
 
 # Import online_training modules
@@ -20,7 +26,13 @@ from online_training.train.offline_train import offlineTrainLoop
 from online_training.train import models
 from online_training.train.time_prof import timeStats
 from online_training.train import utils
-from online_training.backends.smartredis import SmartRedis_Train_Client
+
+try:
+    import dragon
+    from dragon.globalservices.api_setup import connect_to_infrastructure
+    connect_to_infrastructure()
+except:
+    pass
 
 ## Main function
 @hydra.main(version_base=None, config_path="./conf", config_name="train_config")
@@ -37,23 +49,33 @@ def main(cfg: DictConfig):
     date = datetime.datetime.now().strftime('%d.%m.%y_%H.%M') if comm.rank==0 else None
     date = comm.comm.bcast(date, root=0)
     comm.comm.Barrier()
-    mh = utils.MPIFileHandler(f"train_{date}.log")                                        
     #formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
-    formatter = logging.Formatter('%(levelname)s:%(message)s')
+    formatter = logging.Formatter('%(message)s')
+    mh = utils.MPIFileHandler(f"train_{date}.log", comm=comm.comm)                       
     mh.setFormatter(formatter)
     logger.addHandler(mh)
+    #fh = logging.FileHandler(f'{os.getcwd()}/train_{date}.log')
+    #fh.setFormatter(formatter)
+    #if comm.rank==0: logger.addHandler(fh)
     
-    logger.debug(f"Hello from MPI rank {comm.rank}/{comm.size} and local rank {comm.rankl}")
+    if cfg.logging=='debug':
+        try:
+            p = psutil.Process()
+            core_list = p.cpu_affinity()
+        except:
+            core_list = []
+        logger.debug(f"Hello from MPI rank {comm.rank}/{comm.size}, local rank {comm.rankl}, " \
+                     +f"core {core_list}, and node {comm.name}")
 
     # Intel imports
     try:
         import intel_extension_for_pytorch
-    except ModuleNotFoundError as err:
-        if comm.rank==0: logger.warning(err)
+    except ModuleNotFoundError as e:
+        if comm.rank==0: logger.warning(f'{e}')
     try:
         import oneccl_bindings_for_pytorch
-    except ModuleNotFoundError as err:
-        if comm.rank==0: logger.warning(err)
+    except ModuleNotFoundError as e:
+        if comm.rank==0: logger.warning(f'{e}')
 
     # Initialize Torch Distributed
     os.environ['RANK'] = str(comm.rank)
@@ -95,9 +117,22 @@ def main(cfg: DictConfig):
     client = None
     if cfg.online.backend:
         if cfg.online.backend=='smartredis':
-            client = SmartRedis_Train_Client(cfg, comm.rank, comm.size)
+            try:
+                from online_training.backends.smartredis import SmartRedis_Train_Client
+                client = SmartRedis_Train_Client(cfg, comm.rank, comm.size)
+            except Exception as e:
+                logger.info('Could not import client, exception')
+                logger.info(f'{e}')
+        elif cfg.online.backend=='dragon':
+            try:
+                from online_training.backends.dragon import Dragon_Train_Client
+                client = Dragon_Train_Client(cfg, comm.rank, comm.size, comm.name)
+            except Exception as e:
+                logger.info('Could not import client, exception')
+                logger.info(f'{e}')
         client.init()
         comm.comm.Barrier()
+        if comm.rank==client.head_rank: logger.debug(f'Rank {comm.rank} is a head rank')
         if comm.rank == 0:
             logger.info(f"Initialized all {cfg.online.backend} clients\n")
             logger.info("Getting size info from simulation ...")
@@ -107,8 +142,9 @@ def main(cfg: DictConfig):
             logger.info(f"Model input features: {client.ndIn}")
             logger.info(f"Model output targets: {client.ndOut}")
             logger.info(f"Total tensors in all DB: {client.num_tot_tensors}")
-            logger.info(f"Tensors in local DB: {client.num_db_tensors}")
+            logger.info(f"Tensors in local DB: {client.num_local_tensors}")
             logger.info(f"Simulation tensors per batch: {client.tensor_batch}")
+            logger.info(f"Overwriting simulaiton tensors: {client.dataOverWr}\n")
 
     # Instantiate the model and get the training data
     model, data = models.load_model(cfg, comm, client, rng)
@@ -155,10 +191,10 @@ def main(cfg: DictConfig):
         logger.info("Saved model to disk\n")
 
     # Collect timing statistics for training
-    if (t_data.i_train>0):
-        if (comm.rank==0):
-            logger.info("Timing data:")
-        t_data.printTimeData(comm, logger)
+    #if (t_data.i_train>0):
+    #    if (comm.rank==0):
+    #        logger.info("Timing data:")
+    #    t_data.printTimeData(comm, logger)
 
     # Accumulate timing data for client and print summary
     client.collect_stats(comm)
@@ -172,6 +208,8 @@ def main(cfg: DictConfig):
         logger.info("FOM:")
         utils.print_fom(logger, t_data.t_tot, train_array_sz, client.time_stats)
 
+    if cfg.online.backend:
+        client.destroy()
     mh.close()
     comm.finalize()
 
