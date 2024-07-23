@@ -99,7 +99,7 @@ def launch_ProcessGroup(num_procs: int, num_procs_pn: int, nodelist,
                                       cpu_affinity=[cpu_bind[proc]])
                 grp.add_process(nproc=1, 
                                 template=ProcessTemplate(target=exe, 
-                                                         args=args_list, 
+                                                         args=list(args_list), 
                                                          cwd=run_dir,
                                                          policy=local_policy, 
                                                          stdout=MSG_DEVNULL))
@@ -148,11 +148,6 @@ def launch_colocated(cfg: DictConfig, dragon_nodelist: List[str]) -> None:
             dd['node'] = node_name
             ddicts[node_name] = dd
             ddicts_serialized.append(dd.serialize())
-            # Also write the serialized DDict to file for now,
-            # passing it through command line arg results in all ranks
-            # connecting to the last node's DDict
-            with open(f'ddict_{node_name}','w') as f:
-                f.write(f'{dd.serialize()}')
         except Exception as e:
             print(e, flush=True)
     print('Launched the dictionaries on all the nodes \n', flush=True)
