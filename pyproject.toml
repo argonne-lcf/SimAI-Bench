@@ -1,0 +1,25 @@
+# file: pyproject.toml
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["online_training"]
+
+[project]
+name = "simai_bench"
+description = "Benchmarks for coupled simulation and AI/ML workflows"
+authors = [
+    {name = "Riccardo Balin", email = "rbalin@anl.gov"},
+]
+version = "0.0.1"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "hydra-core",
+    "gmpy2",
+    "mpipartition",
+]
+urls = {source = "github.com/argonne-lcf/SimAI-Bench"}
