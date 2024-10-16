@@ -8,12 +8,12 @@ Performance benchmarks for coupled simulation and AI workflows on HPC systems
 The goal of SimAI-Bench is to host a series of micro, mini, and full benchmarks for various coupled simulation and AI/ML workflow motifs designed for leadership HPC systems.
 These benchmarks may be used to evaluate the performance and scalability of different workflow libraries or compare the same workflow motif across different hardware.
 
-The benchmarks below are named according [Wes et al., 2024](https://arxiv.org/pdf/2406.14315), which organized coupled workflows into six motifs based on their goals and data transfer patterns. 
+The benchmarks below are named according [Brewer et al., 2024](https://arxiv.org/pdf/2406.14315), which organized coupled workflows into six motifs based on their goals and data transfer patterns. 
 
 ### Motif 6: Online Training of Mesh-Based ML Surrogates
 
 The first mini-benchmark is representative of an [online training](./src/online_training) and inference workflow for developing mesh-based ML surrogate models from ongoing HPC simulations.
-Referring to [Wes et al., 2024](https://arxiv.org/pdf/2406.14315), this falls motif #6: Adaptive training of large AI models. 
+Referring to [Brewer et al., 2024](https://arxiv.org/pdf/2406.14315), this falls motif #6: Adaptive training of large AI models. 
 
 The focus of this mini-benchmark is to replicate the data transfer patterns and key components of a realistic workflow, but removing the complexities involved with compiling and running complex simulation codes. 
 Is is composed of a mock parallel simulation which performs a time step loop, advancing the system dynamics, and at pre-determined intervals (selected at runtime) transfers training data to either the training component or a staging area. The simulation also receives model checkpoints and performs inference with the ML surrogate, comparing the predicted solution field with the true one, and thus determining whether more training is needed or if the accuracy required tolerance is met, at which point the workflow ends.
