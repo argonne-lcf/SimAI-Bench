@@ -1,5 +1,0 @@
-Hello from MPI rank 0/1, local rank 0, core [1], and node frontier05485
-No module named 'intel_extension_for_pytorch'
-No module named 'oneccl_bindings_for_pytorch'
-frontier05485
-3442

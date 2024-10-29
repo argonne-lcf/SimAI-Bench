@@ -70,6 +70,7 @@ def launch_coDB(cfg, nodelist, nNodes):
         sim_settings.set_hostlist(hosts)
         #sim_settings.set_cpu_binding_type(cfg.run_args.sim_cpu_bind)
         sim_settings.add_exe_args(cfg.sim.arguments)
+        sim_settings.set('exclusive')
 
     # Create the co-located database model
     colo_model = exp.create_model("sim", sim_settings)
@@ -145,6 +146,7 @@ def launch_coDB(cfg, nodelist, nNodes):
             ml_settings.set_tasks(cfg.run_args.mlprocs)
             ml_settings.set_tasks_per_node(cfg.run_args.mlprocs_pn)
             ml_settings.set_hostlist(hosts)
+            ml_settings.set('exclusive')
             #ml_settings.set_cpu_binding_type(cfg.run_args.ml_cpu_bind)
 
         print("Launching training script ... ")
@@ -310,6 +312,7 @@ def main(cfg: DictConfig):
         nodelist, nNodes = parseNodeList(hostfile)
     elif cfg.database.launcher=='slurm':
         nodelist = [os.getenv('SLURM_JOB_NODELIST')]
+        print(nodelist)
         nNodes = len(nodelist)
 
     # Call appropriate launcher

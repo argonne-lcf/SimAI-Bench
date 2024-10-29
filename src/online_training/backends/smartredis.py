@@ -60,9 +60,9 @@ class SmartRedis_Sim_Client:
         self.db_address = os.environ["SSDB"]
         tic = perf_counter()
         if (self.db_nodes==1):
-            self.client = Client(cluster=False)
+            self.client = Client(cluster=False, address=self.db_address)
         else:
-            self.client = Client(cluster=True)
+            self.client = Client(cluster=True, address=self.db_address)
         toc = perf_counter()
         self.times["init"] = toc - tic
 

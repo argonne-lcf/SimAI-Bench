@@ -2,9 +2,9 @@
 database:
     launch: True # True,False - determine whether to launch SmartSim database
     backend: "redis" # redis,keydb - launch Redis of KeyDB database
-    deployment: "colocated" # colocated,clustered - deployment of database
+    deployment: "clustered" # colocated,clustered - deployment of database
     port: 6780
-    network_interface: "udf" # lo,hsn0,uds - network used for data transfer
+    network_interface: "hsn0" # lo,hsn0,uds - network used for data transfer
     # On Polaris: lo hsn0 for clustered, lo and uds for co-located
     exp_name: "SimAI-Bench" # string
     launcher: "slurm" # pals, local, slurm - job scheduler
@@ -23,7 +23,7 @@ run_args:
     dbprocs_pn: 1 # integer - number of threads for database
     sim_cpu_bind: "list:1,8,16,24" # none, core, list, numa - CPU binding for simulation
     ml_cpu_bind: "list:4,12" # none, core, list, numa - CPU binding for ML training
-    db_cpu_bind: [1,2] # ID of CPU logical devices on which to pin the Orchestrator
+    db_cpu_bind: [1,2,3,4] # ID of CPU logical devices on which to pin the Orchestrator
                         # empty list - [0,1,2,...,dbprocs_pn-1]
                         # None - disable pinning
                         # list of ints - pinning to the specified CPU ID

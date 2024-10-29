@@ -84,14 +84,12 @@ def main(cfg: DictConfig):
         master_addr = cfg.torch_dist_addr if comm.rank == 0 else None
     else:
         master_addr = socket.gethostname() if comm.rank == 0 else None
-    logger.debug(f'{master_addr}')
     master_addr = comm.comm.bcast(master_addr, root=0)
     os.environ['MASTER_ADDR'] = master_addr
     if cfg.torch_dist_port:
         os.environ['MASTER_PORT'] = cfg.torch_dist_port
     else:
         os.environ['MASTER_PORT'] = str(3442)
-    logger.debug(f'{os.getenv("MASTER_PORT")}')
     if (cfg.device=='cpu'): backend = 'gloo'
     elif (cfg.device=='cuda' and cfg.ppd==1): backend = 'nccl'
     elif (cfg.device=='cuda' and cfg.ppd>1): backend = 'gloo'

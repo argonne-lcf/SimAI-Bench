@@ -1,5 +1,0 @@
-- ppn=1
-- online.backend=smartredis
-- online.launch=colocated
-- online.simprocs=1
-- online.smartredis.db_nodes=1
