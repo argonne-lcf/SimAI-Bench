@@ -1,0 +1,17 @@
+2024-10-25 19:06:36,263 frontier05485 TelemetryMonitor[1180252:MainThread] INFO Executing telemetry monitor
+2024-10-25 19:06:36,263 frontier05485 TelemetryMonitor[1180252:MainThread] INFO Polling frequency: 5.0s
+2024-10-25 19:06:36,263 frontier05485 TelemetryMonitor[1180252:MainThread] INFO Experiment directory: /lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench
+2024-10-25 19:06:36,263 frontier05485 TelemetryMonitor[1180252:MainThread] INFO Telemetry output: /lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench/.smartsim/telemetry
+2024-10-25 19:06:38,427 frontier05485 TelemetryMonitor[1180252:Thread-1] INFO Created file: /lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench/.smartsim/telemetry/manifest.json
+2024-10-25 19:06:38,442 frontier05485 TelemetryMonitor[1180252:Thread-1] INFO Modified directory: /lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench/.smartsim/telemetry
+2024-10-25 19:06:38,442 frontier05485 TelemetryMonitor[1180252:Thread-1] INFO Opened file: /lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench/.smartsim/telemetry/manifest.json
+2024-10-25 19:06:38,443 frontier05485 TelemetryMonitor[1180252:Thread-1] INFO Modified file: /lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench/.smartsim/telemetry/manifest.json
+2024-10-25 19:06:38,453 frontier05485 TelemetryMonitor[1180252:Thread-1] INFO Closed file: /lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench/.smartsim/telemetry/manifest.json
+2024-10-25 19:06:38,453 frontier05485 TelemetryMonitor[1180252:Thread-1] INFO Modified directory: /lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench/.smartsim/telemetry
+2024-10-25 19:06:38,453 frontier05485 TelemetryMonitor[1180252:Thread-1] INFO Opened file: /lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench/.smartsim/telemetry/manifest.json
+2024-10-25 19:10:51,545 frontier05485 TelemetryMonitor[1180252:MainThread] INFO Cooldown 5.56% complete
+2024-10-25 19:10:56,540 frontier05485 TelemetryMonitor[1180252:MainThread] INFO Cooldown 11.13% complete
+2024-10-25 19:11:01,546 frontier05485 TelemetryMonitor[1180252:MainThread] INFO Cooldown 16.69% complete
+2024-10-25 19:11:06,551 frontier05485 TelemetryMonitor[1180252:MainThread] INFO Cooldown 22.25% complete
+2024-10-25 19:11:11,557 frontier05485 TelemetryMonitor[1180252:MainThread] INFO Cooldown 27.81% complete
+2024-10-25 19:11:16,562 frontier05485 TelemetryMonitor[1180252:MainThread] INFO Cooldown 33.37% complete

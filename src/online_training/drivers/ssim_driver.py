@@ -6,7 +6,7 @@ import hydra
 
 # smartsim and smartredis imports
 from smartsim import Experiment
-from smartsim.settings import RunSettings, PalsMpiexecSettings
+from smartsim.settings import RunSettings, SrunSettings, PalsMpiexecSettings
 
 
 ## Define function to parse node list
@@ -39,14 +39,14 @@ def launch_coDB(cfg, nodelist, nNodes):
         client_exe = "python"
     else:
         exe_args = None
-    if (cfg.database.launcher=='local'):
+    if cfg.database.launcher=='local':
         sim_settings = RunSettings(client_exe,
                            exe_args=exe_args,
                            run_command='mpirun',
                            run_args={"-n" : cfg.run_args.simprocs},
                            env_vars=None)
         sim_settings.add_exe_args(cfg.sim.arguments)
-    elif (cfg.database.launcher=='pals'):
+    elif cfg.database.launcher=='pals':
         sim_settings = PalsMpiexecSettings(
                            client_exe,
                            exe_args=exe_args,
@@ -59,6 +59,17 @@ def launch_coDB(cfg, nodelist, nNodes):
         if (cfg.sim.affinity):
             sim_settings.set_gpu_affinity_script(cfg.sim.affinity,
                                                  cfg.run_args.simprocs_pn)
+    elif cfg.database.launcher=='slurm':
+        sim_settings = SrunSettings(
+                           client_exe,
+                           exe_args=exe_args,
+                           env_vars=None)
+        sim_settings.set_nodes(nNodes)
+        sim_settings.set_tasks(cfg.run_args.simprocs)
+        sim_settings.set_tasks_per_node(cfg.run_args.simprocs_pn)
+        sim_settings.set_hostlist(hosts)
+        #sim_settings.set_cpu_binding_type(cfg.run_args.sim_cpu_bind)
+        sim_settings.add_exe_args(cfg.sim.arguments)
 
     # Create the co-located database model
     colo_model = exp.create_model("sim", sim_settings)
@@ -104,14 +115,15 @@ def launch_coDB(cfg, nodelist, nNodes):
                         + f' online.simprocs={cfg.run_args.simprocs}' \
                         + f' online.smartredis.db_nodes={cfg.run_args.db_nodes}'
         SSDB = colo_model.run_settings.env_vars['SSDB']
-        if (cfg.database.launcher=='local'):
+        if cfg.database.launcher=='local':
             ml_settings = RunSettings('python',
                                       exe_args=ml_exe,
                                       run_command='mpirun',
                                       run_args={"-n" : cfg.run_args.mlprocs},
                                       env_vars={'SSDB' : SSDB})
-        elif (cfg.database.launcher=='pals'):
-            ml_settings = PalsMpiexecSettings('python', 
+        elif cfg.database.launcher=='pals':
+            ml_settings = PalsMpiexecSettings(
+                                              'python', 
                                               exe_args=ml_exe,
                                               run_args=None,
                                               env_vars={'SSDB':SSDB, 'MPICH_OFI_CXI_PID_BASE':str(1)})
@@ -123,6 +135,17 @@ def launch_coDB(cfg, nodelist, nNodes):
                 ml_settings.set_gpu_affinity_script(cfg.train.affinity,
                                                     cfg.run_args.mlprocs_pn,
                                                     cfg.run_args.simprocs_pn)
+        elif cfg.database.launcher=='slurm':
+            ml_settings = SrunSettings(
+                                       'python', 
+                                        exe_args=ml_exe,
+                                        run_args=None,
+                                        env_vars={'SSDB':SSDB, 'MPICH_OFI_CXI_PID_BASE':str(1)})
+            ml_settings.set_nodes(nNodes)
+            ml_settings.set_tasks(cfg.run_args.mlprocs)
+            ml_settings.set_tasks_per_node(cfg.run_args.mlprocs_pn)
+            ml_settings.set_hostlist(hosts)
+            #ml_settings.set_cpu_binding_type(cfg.run_args.ml_cpu_bind)
 
         print("Launching training script ... ")
         ml_model = exp.create_model("train", ml_settings)
@@ -152,7 +175,7 @@ def launch_clDB(cfg, nodelist, nNodes):
     # Set up database and start it
     PORT = cfg.database.port
     exp = Experiment(cfg.database.exp_name, launcher=cfg.database.launcher)
-    runArgs = {"np": 1, "ppn": 1, "cpu-bind": "numa"}
+    #runArgs = {"np": 1, "ppn": 1, "cpu-bind": "numa"}
     kwargs = {
         'maxclients': 100000,
         'threads_per_queue': 4, # set to 4 for improved performance
@@ -160,17 +183,17 @@ def launch_clDB(cfg, nodelist, nNodes):
         'intra_op_parallelism': cfg.run_args.cores_pn,
         'cluster-node-timeout': 30000,
         }
-    if (cfg.database.launcher=='local'): run_command = 'mpirun'
-    elif (cfg.database.launcher=='pals'): run_command = 'mpiexec'
+    #if (cfg.database.launcher=='local'): run_command = 'mpirun'
+    #elif (cfg.database.launcher=='pals'): run_command = 'mpiexec'
     network = cfg.database.network_interface if type(cfg.database.network_interface)==str \
                                              else OmegaConf.to_object(cfg.database.network_interface)  
     db = exp.create_database(port=PORT, 
                              batch=False,
                              db_nodes=cfg.run_args.db_nodes,
-                             run_command=run_command,
+                             #run_command=run_command,
                              interface=network, 
                              hosts=dbNodes_list,
-                             run_args=runArgs,
+                             #run_args=runArgs,
                              single_cmd=True,
                              **kwargs
                             )
@@ -205,6 +228,18 @@ def launch_clDB(cfg, nodelist, nNodes):
         if (cfg.sim.affinity):
             sim_settings.set_gpu_affinity_script(cfg.sim.affinity,
                                                  cfg.run_args.simprocs_pn)
+    elif cfg.database.launcher=='slurm':
+        sim_settings = SrunSettings(
+                           client_exe,
+                           exe_args=exe_args,
+                           env_vars=None)
+        sim_settings.set_nodes(cfg.run_args.sim_nodes)
+        sim_settings.set_tasks(cfg.run_args.simprocs)
+        sim_settings.set_tasks_per_node(cfg.run_args.simprocs_pn)
+        sim_settings.set_hostlist(simNodes)
+        #sim_settings.set_cpu_binding_type(cfg.run_args.sim_cpu_bind)
+        sim_settings.add_exe_args(cfg.sim.arguments)
+
 
     # Start the simulation
     print("Launching the simulation  ...")
@@ -242,6 +277,17 @@ def launch_clDB(cfg, nodelist, nNodes):
                 ml_settings.set_gpu_affinity_script(cfg.train.affinity,
                                                     cfg.run_args.mlprocs_pn,
                                                     0)
+        elif cfg.database.launcher=='slurm':
+            ml_settings = SrunSettings(
+                                       'python',
+                                        exe_args=ml_exe,
+                                        run_args=None,
+                                        env_vars=None)
+            ml_settings.set_nodes(cfg.run_args.ml_nodes)
+            ml_settings.set_tasks(cfg.run_args.mlprocs)
+            ml_settings.set_tasks_per_node(cfg.run_args.mlprocs_pn)
+            ml_settings.set_hostlist(mlNodes)
+            #ml_settings.set_cpu_binding_type(cfg.run_args.ml_cpu_bind)
 
         print("Launching the training client ...")
         ml_model = exp.create_model("train_model", ml_settings)
@@ -258,10 +304,13 @@ def launch_clDB(cfg, nodelist, nNodes):
 @hydra.main(version_base=None, config_path="./conf", config_name="ssim_config")
 def main(cfg: DictConfig):
     # Get nodes of this allocation (job)
-    nodelist = nNodes = None
-    if (cfg.database.launcher=='pals'):
+    nodelist = nNodes = hostfile = None
+    if cfg.database.launcher=='pals':
         hostfile = os.getenv('PBS_NODEFILE')
         nodelist, nNodes = parseNodeList(hostfile)
+    elif cfg.database.launcher=='slurm':
+        nodelist = [os.getenv('SLURM_JOB_NODELIST')]
+        nNodes = len(nodelist)
 
     # Call appropriate launcher
     if (cfg.database.deployment == "colocated"):

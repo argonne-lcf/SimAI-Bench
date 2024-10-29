@@ -1,0 +1,86 @@
+{
+  "schema info": {
+    "schema_name": "entity manifest",
+    "version": "0.0.4"
+  },
+  "experiment": {
+    "name": "SimAI-Bench",
+    "path": "/lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench",
+    "launcher": "Slurm",
+    "out_file": "/lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench/.smartsim/telemetry/logs/smartsim.out",
+    "err_file": "/lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench/.smartsim/telemetry/logs/smartsim.err"
+  },
+  "runs": [
+    {
+      "run_id": "86ebd42",
+      "timestamp": 1729897598426649137,
+      "model": [
+        {
+          "name": "sim",
+          "path": "/lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench/sim",
+          "exe_args": [
+            "/lustre/orion/proj-shared/gen150/simai-bench/balin/SimAI-Bench/src/online_training/data_producers/sim.py",
+            "--backend=smartredis",
+            "--model=gnn",
+            "--problem_size=small",
+            "--launch=colocated",
+            "--ppn=1",
+            "--tolerance=0.004",
+            "--train_interval=10",
+            "--db_max_mem_size=0.1"
+          ],
+          "run_settings": {
+            "exe": [
+              "/lustre/orion/proj-shared/gen150/simai-bench/balin/env/_simai/bin/python"
+            ],
+            "run_command": "/usr/bin/srun",
+            "run_args": {
+              "nodes": 1,
+              "ntasks": 1,
+              "ntasks-per-node": 1,
+              "nodelist": "frontier05485"
+            }
+          },
+          "batch_settings": {},
+          "params": {},
+          "files": {
+            "Symlink": [],
+            "Configure": [],
+            "Copy": []
+          },
+          "colocated_db": {
+            "settings": {
+              "port": 6780,
+              "ifname": "udf",
+              "cpus": 1,
+              "custom_pinning": "28,29,30,31",
+              "debug": false,
+              "db_identifier": "",
+              "rai_args": {
+                "threads_per_queue": 4,
+                "inter_op_parallelism": 1,
+                "intra_op_parallelism": 1
+              },
+              "extra_db_args": {
+                "maxclients": "100000",
+                "cluster-node-timeout": "30000"
+              }
+            },
+            "scripts": [],
+            "models": []
+          },
+          "telemetry_metadata": {
+            "status_dir": "/lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench/.smartsim/telemetry/SimAI-Bench/86ebd42/model/sim",
+            "step_id": "2704351.11",
+            "task_id": "1180254",
+            "managed": true
+          },
+          "out_file": "/lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench/.smartsim/telemetry/SimAI-Bench/86ebd42/model/sim/sim.out",
+          "err_file": "/lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench/.smartsim/telemetry/SimAI-Bench/86ebd42/model/sim/sim.err"
+        }
+      ],
+      "orchestrator": [],
+      "ensemble": []
+    }
+  ]
+}

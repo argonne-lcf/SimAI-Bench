@@ -1,0 +1,10 @@
+- sim.executable=/lustre/orion/proj-shared/gen150/simai-bench/balin/SimAI-Bench/src/online_training/data_producers/sim.py
+- sim.arguments=--backend\=smartredis --model\=gnn --problem_size\=small --launch\=colocated
+  --ppn\=1 --tolerance\=0.004 --train_interval\=10 --db_max_mem_size\=0.1
+- train.executable=/lustre/orion/proj-shared/gen150/simai-bench/balin/SimAI-Bench/src/online_training/train/train.py
+- train.config_path=/lustre/orion/proj-shared/gen150/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/conf
+- train.config_name=train_config_gnn_small
+- run_args.simprocs=1
+- run_args.simprocs_pn=1
+- run_args.mlprocs=1
+- run_args.mlprocs_pn=1

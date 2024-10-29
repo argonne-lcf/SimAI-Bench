@@ -1,0 +1,5 @@
+[2024-10-25 19:10:53,263][[0]][DEBUG] - Hello from MPI rank 0/1, local rank 0, core [1], and node frontier05485
+[2024-10-25 19:10:53,264][[0]][WARNING] - No module named 'intel_extension_for_pytorch'
+[2024-10-25 19:10:53,265][[0]][WARNING] - No module named 'oneccl_bindings_for_pytorch'
+[2024-10-25 19:10:53,266][[0]][DEBUG] - frontier05485
+[2024-10-25 19:10:53,266][[0]][DEBUG] - 3442

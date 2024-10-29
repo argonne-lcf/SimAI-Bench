@@ -1,0 +1,14 @@
+19:07:00 frontier05485 SmartSim {/lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench} [1180185:MainThread] ERROR An error occurred when launching train 
+Check error and output files for details.
+Name: train
+Type: Model
+Executable: /lustre/orion/proj-shared/gen150/simai-bench/balin/env/_simai/bin/python
+Executable Arguments: /lustre/orion/proj-shared/gen150/simai-bench/balin/SimAI-Bench/src/online_training/train/train.py --config-path /lustre/orion/proj-shared/gen150/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/conf --config-name train_config_gnn_small ppn=1 online.backend=smartredis online.launch=colocated online.simprocs=1 online.smartredis.db_nodes=1
+Run Command: /usr/bin/srun
+Run Arguments:
+	nodes = 1
+	ntasks = 1
+	ntasks-per-node = 1
+	nodelist = frontier05485
+
+19:07:00 frontier05485 SmartSim {/lustre/orion/gen150/proj-shared/simai-bench/balin/SimAI-Bench/run_scripts/online_training/smartsim/frontier/SimAI-Bench} [1180185:MainThread] ERROR Job step train failed to launch
