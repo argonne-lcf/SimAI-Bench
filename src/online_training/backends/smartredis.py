@@ -216,11 +216,11 @@ class SmartRedis_Sim_Client:
             tocc = perf_counter()
             self.times["infer_send"].append(tocc - ticc)
             ticc = perf_counter()
-            #self.client.run_model(self.model, inputs=[input_key], 
-            #                      outputs=[output_key])
-            self.client.run_model_multigpu(self.model, self.rankl, 0, 4,
-                                           inputs=[input_key], 
-                                           outputs=[output_key])
+            self.client.run_model(self.model, inputs=[input_key], 
+                                  outputs=[output_key])
+            #self.client.run_model_multigpu(self.model, self.rankl, 0, 4,
+            #                               inputs=[input_key], 
+            #                               outputs=[output_key])
             tocc = perf_counter()
             self.times["infer_run"].append(tocc - ticc)
             ticc = perf_counter()
