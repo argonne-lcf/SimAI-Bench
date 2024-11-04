@@ -30,6 +30,13 @@ class SmartRedis_Sim_Client:
         self.max_mem = args.db_max_mem_size*1024*1024*1024
         self.db_address = None
         self.model = args.model
+        
+        if torch.cuda.is_available():
+            n_devices = torch.cuda.device_count()
+            device_id = self.rankl % n_devices
+            self.device = f'cuda:{device_id}'
+        else:
+            self.device = 'cpu'
 
         self.times = {
             "init": 0.,
@@ -188,14 +195,13 @@ class SmartRedis_Sim_Client:
         tic = perf_counter()
         if self.client.key_exists(f'{self.model}_bytes'):
             buffer = self.client.get_bytes(self.model)
-            #buffer = io.BytesIO(model_bytes)
             model_jit = torch.jit.load(buffer, map_location='cpu')
             x = torch.from_numpy(inputs).type(torch.float32)
             if self.model=='mlp':
                 ticc = perf_counter()
                 with torch.no_grad():
-                    model_jit.to(f'cuda:{3-self.rankl}')
-                    x = x.to(f'cuda:{3-self.rankl}')
+                    model_jit.to(self.device)
+                    x = x.to(self.device)
                     pred = model_jit(x).cpu().numpy()
                 tocc = perf_counter()
                 self.times["infer_run"].append(tocc - ticc)
@@ -203,10 +209,10 @@ class SmartRedis_Sim_Client:
                 edge_index = torch.from_numpy(self.edge_index).type(torch.int64)
                 pos = torch.from_numpy(self.coords).type(torch.float32)
                 with torch.no_grad():
-                    model_jit.to(f'cuda:{3-self.rankl}')
-                    x = x.to(f'cuda:{3-self.rankl}')
-                    edge_index = edge_index.to(f'cuda:{3-self.rankl}')
-                    pos = pos.to(f'cuda:{3-self.rankl}')
+                    model_jit.to(self.device)
+                    x = x.to(self.device)
+                    edge_index = edge_index.to(self.device)
+                    pos = pos.to(self.device)
                     pred = model_jit(x, edge_index, pos).cpu().numpy()
         else:
             input_key = f"{self.model}_inputs_{self.rank}"

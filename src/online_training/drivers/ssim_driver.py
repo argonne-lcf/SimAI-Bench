@@ -10,13 +10,31 @@ from smartsim.settings import RunSettings, SrunSettings, PalsMpiexecSettings
 
 
 ## Define function to parse node list
-def parseNodeList(fname):
-    with open(fname) as file:
-        nodelist = file.readlines()
-        nodelist = [line.rstrip() for line in nodelist]
-        nodelist = [line.split('.')[0] for line in nodelist]
-    nNodes = len(nodelist)
-    return nodelist, nNodes
+def parseNodeList(launcher: str):
+    nodelist = nNodes = None
+    if launcher=='pals':
+        hostfile = os.getenv('PBS_NODEFILE')
+        with open(fname) as file:
+            nodelist = file.readlines()
+            nodelist = [line.rstrip() for line in nodelist]
+            nodelist = [line.split('.')[0] for line in nodelist]
+    elif launcher=='slurm':
+        slurm_nodelist = os.getenv('SLURM_JOB_NODELIST')
+        if '[' in slurm_nodelist:
+            tmp = string.split(']')[0].split('[')[1]
+            tmp_list = tmp.split(',')
+            nodelist = []
+            for i in range(len(tmp_list)):
+                if '-' in tmp_list[i]:
+                    node_i = int(tmp_list[i].split('-')[0])
+                    node_e = int(tmp_list[i].split('-')[1])
+                    nodelist.extend([str(j) for j in range(node_i,node_e+1)])
+                else:
+                    nodelist.append(tmp_list[i])
+        else:
+            nodelist = [slurm_nodelist]
+    num_nodes = len(nodelist)
+    return nodelist, num_nodes
 
 
 ## Co-located DB launch
@@ -306,14 +324,7 @@ def launch_clDB(cfg, nodelist, nNodes):
 @hydra.main(version_base=None, config_path="./conf", config_name="ssim_config")
 def main(cfg: DictConfig):
     # Get nodes of this allocation (job)
-    nodelist = nNodes = hostfile = None
-    if cfg.database.launcher=='pals':
-        hostfile = os.getenv('PBS_NODEFILE')
-        nodelist, nNodes = parseNodeList(hostfile)
-    elif cfg.database.launcher=='slurm':
-        nodelist = [os.getenv('SLURM_JOB_NODELIST')]
-        print(nodelist)
-        nNodes = len(nodelist)
+    nodelist, nNodes = parseNodeList(cfg.database.launcher)
 
     # Call appropriate launcher
     if (cfg.database.deployment == "colocated"):

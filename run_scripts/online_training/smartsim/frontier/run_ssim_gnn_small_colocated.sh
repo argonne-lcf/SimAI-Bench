@@ -34,11 +34,11 @@ echo
 #export SR_LOG_FILE=stdout
 #export SMARTSIM_LOG_LEVEL=debug
 export SR_LOG_LEVEL=QUIET
-#export SR_CONN_INTERVAL=10 # default is 1000 ms
-#export SR_CONN_TIMEOUT=1000 # default is 100 ms
-#export SR_CMD_INTERVAL=10 # default is 1000 ms
-#export SR_CMD_TIMEOUT=1000 # default is 100 ms
-#export SR_THREAD_COUNT=4 # default is 4
+export SR_CONN_INTERVAL=10 # default is 1000 ms
+export SR_CONN_TIMEOUT=1000 # default is 100 ms
+export SR_CMD_INTERVAL=10 # default is 1000 ms
+export SR_CMD_TIMEOUT=1000 # default is 100 ms
+export SR_THREAD_COUNT=4 # default is 4
 
 # Needed to bypass MIOpen, Disk I/O Errors
 export MIOPEN_USER_DB_PATH="/tmp/my-miopen-cache"
