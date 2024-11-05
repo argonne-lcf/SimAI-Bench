@@ -20,17 +20,21 @@ def parseNodeList(launcher: str):
             nodelist = [line.split('.')[0] for line in nodelist]
     elif launcher=='slurm':
         slurm_nodelist = os.getenv('SLURM_JOB_NODELIST')
+        cluster_name = os.getenv('SLURM_CLUSTER_NAME')
+        num_chars = len(os.getenv('SLURMD_NODENAME').replace(cluster_name,''))
         if '[' in slurm_nodelist:
-            tmp = string.split(']')[0].split('[')[1]
+            tmp = slurm_nodelist.split(']')[0].split('[')[1]
             tmp_list = tmp.split(',')
             nodelist = []
             for i in range(len(tmp_list)):
                 if '-' in tmp_list[i]:
                     node_i = int(tmp_list[i].split('-')[0])
                     node_e = int(tmp_list[i].split('-')[1])
-                    nodelist.extend([str(j) for j in range(node_i,node_e+1)])
+                    nodelist.extend([f'{cluster_name}{"0"*(num_chars-len(str(j)))}{j}' \
+                                     for j in range(node_i,node_e+1)]
+                    )
                 else:
-                    nodelist.append(tmp_list[i])
+                    nodelist.append(f'{cluster_name}{tmp_list[i]}')
         else:
             nodelist = [slurm_nodelist]
     num_nodes = len(nodelist)
