@@ -339,14 +339,13 @@ def launch_mixed(cfg: DictConfig, dd_serialized: str, dragon_nodelist: List[str]
 @hydra.main(version_base=None, config_path="./conf", config_name="dragon_config")
 def main(cfg: DictConfig):
     # Assertions
-    assert cfg.scheduler=='pbs' or cfg.scheduler=='local', print("Only allowed schedulers at this time are pbs and local")
     assert cfg.deployment == "colocated" or cfg.deployment == "clustered" or cfg.deployment == "mixed", \
                     print("Deployment is either colocated, clustered or mixed")
 
     # Get information on this allocation
     #sched_nodelist = parseNodeList(cfg.scheduler)
     alloc = System()
-    num_tot_nodes = alloc.nnodes()
+    num_tot_nodes = alloc.nnodes
     dragon_nodelist = alloc.nodes
 
     # Start the Dragon Distributed Dictionary (DDict)

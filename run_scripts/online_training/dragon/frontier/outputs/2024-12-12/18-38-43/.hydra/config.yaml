@@ -1,0 +1,46 @@
+ppn: 1
+ppd: 1
+logging: debug
+device: cuda
+model: gnn
+data_path: ''
+num_samples_per_rank: 111
+reproducibility: true
+torch_dist_port: '3442'
+torch_dist_addr: ''
+epochs: 100
+mini_batch: 1
+learning_rate: 0.001
+tolerance: 0.0001
+validation_split: 0.0
+optimizer: Adam
+scheduler: None
+precision: fp32
+mixed_precision: false
+name: ./NNmodel
+save_db: false
+online:
+  backend: dragon
+  launch: colocated
+  global_shuffling: false
+  batch: 0
+  simprocs: 2
+  checkpoints: 10
+  smartredis:
+    db_nodes: 1
+    inference_device: ''
+  dragon:
+    dictionary: BX0AAAAAAAAAAwAAAAAAAIBNAAAAAAAAAAAAAAAAAABAmQSI3SAHj0XUkYAKqJGACgAAAAAAAAAAgCUOCgAAAAAvX2RyYWdvbl9iYWxpbl8xMjg3NDEzX19kZWZfbWFuaWZlc3QAAQAAAAAAAAADAAAAAAAAgAAAAAAAAAAA0NABAAAAAAA=
+mlp:
+  inputs: 1
+  outputs: 1
+  neurons: 40
+  layers: 5
+gnn:
+  spatial_dim: 1
+  input_channels: 1
+  output_channels: 1
+  hidden_channels: 16
+  n_mlp_hidden_layers: 2
+  n_message_passing_layers: 6
+  activation: elu

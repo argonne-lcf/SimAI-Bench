@@ -1,0 +1,5 @@
+- ppn=1
+- online.simprocs=2
+- online.backend=dragon
+- online.launch=colocated
+- online.dragon.dictionary=BX0AAAAAAAAAAwAAAAAAAIBNAAAAAAAAAAAAAAAAAABAmQSI3SAHj0XUkYAKqJGACgAAAAAAAAAAgCUOCgAAAAAvX2RyYWdvbl9iYWxpbl8xMjg3NDEzX19kZWZfbWFuaWZlc3QAAQAAAAAAAAADAAAAAAAAgAAAAAAAAAAA0NABAAAAAAA\=

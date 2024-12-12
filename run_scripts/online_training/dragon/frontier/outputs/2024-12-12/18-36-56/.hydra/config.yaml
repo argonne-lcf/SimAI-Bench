@@ -1,0 +1,35 @@
+scheduler: pbs
+deployment: colocated
+dict:
+  num_nodes: 1
+  managers_per_node: 1
+  mem_size_per_node: 128
+  cpu_bind:
+  - 54
+  - 55
+  - 62
+  - 63
+sim:
+  executable: /lustre/orion/proj-shared/gen150/simai-bench/balin/SimAI-Bench/src/online_training/data_producers/sim.py
+  arguments: --backend=dragon --model=gnn --problem_size=debug --launch=colocated
+    --ppn=1 --tolerance=0.002
+  num_nodes: 1
+  procs: 2
+  procs_pn: 1
+  cpu_bind:
+  - 1
+  - 8
+  - 16
+  - 24
+train:
+  executable: /lustre/orion/proj-shared/gen150/simai-bench/balin/SimAI-Bench/src/online_training/train/train.py
+  config_path: /lustre/orion/proj-shared/gen150/simai-bench/balin/SimAI-Bench/run_scripts/online_training/dragon/frontier/conf
+  config_name: train_config_gnn_debug
+  num_nodes: 1
+  procs: 2
+  procs_pn: 1
+  cpu_bind:
+  - 32
+  - 40
+  - 48
+  - 56

@@ -1,0 +1,11 @@
+- deployment=colocated
+- sim.executable=/lustre/orion/proj-shared/gen150/simai-bench/balin/SimAI-Bench/src/online_training/data_producers/sim.py
+- sim.arguments=--backend\=dragon --model\=gnn --problem_size\=debug --launch\=colocated
+  --ppn\=1 --tolerance\=0.002
+- sim.procs=2
+- sim.procs_pn=1
+- train.executable=/lustre/orion/proj-shared/gen150/simai-bench/balin/SimAI-Bench/src/online_training/train/train.py
+- train.config_path=/lustre/orion/proj-shared/gen150/simai-bench/balin/SimAI-Bench/run_scripts/online_training/dragon/frontier/conf
+- train.config_name=train_config_gnn_debug
+- train.procs=2
+- train.procs_pn=1
