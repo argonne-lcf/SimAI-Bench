@@ -33,6 +33,13 @@ class Dragon_Sim_Client:
         self.model = args.model
         self._dd = None
 
+        if torch.cuda.is_available():
+            n_devices = torch.cuda.device_count()
+            device_id = self.rankl % n_devices
+            self.device = f'cuda:{device_id}'
+        else:
+            self.device = 'cpu'
+
         self.times = {
             "init": 0.,
             "tot_meta": 0.,
@@ -202,15 +209,15 @@ class Dragon_Sim_Client:
             edge_index = torch.from_numpy(self.edge_index).type(torch.int64)
             pos = torch.from_numpy(self.coords).type(torch.float32)
             with torch.no_grad():
-                model_jit.to(f'cuda:{3-self.rankl}')
-                x = x.to(f'cuda:{3-self.rankl}')
-                edge_index = edge_index.to(f'cuda:{3-self.rankl}')
-                pos = pos.to(f'cuda:{3-self.rankl}')
+                model_jit.to(self.device)
+                x = x.to(self.device)
+                edge_index = edge_index.to(self.device)
+                pos = pos.to(self.device)
                 pred = model_jit(x, edge_index, pos).cpu().numpy()
         elif (self.model=='mlp'):
             with torch.no_grad():
-                model_jit.to(f'cuda:{3-self.rankl}')
-                x = x.to(f'cuda:{3-self.rankl}')
+                model_jit.to(self.device)
+                x = x.to(self.device)
                 pred = model_jit(x).cpu().numpy()
         toc = perf_counter()
         self.times["tot_infer"] += toc - tic

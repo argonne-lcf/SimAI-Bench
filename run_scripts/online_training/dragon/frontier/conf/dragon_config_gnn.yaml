@@ -16,7 +16,7 @@ sim:
     num_nodes: 1 # int - number of nodes across which to launch the simulation
     procs: 1 # integer - number of MPI processes for simulation
     procs_pn: 1 # integer - number of MPI processes per node for simulation
-    cpu_bind: [1] #[1,8,16,24] # list - CPU binding for simulation
+    cpu_bind: [0,8,16,24,32,40,48,56] # list - CPU binding for simulation
 
 # Distributed training config
 train:
@@ -26,6 +26,6 @@ train:
     num_nodes: 1 # int - number of nodes across which to launch ML training
     procs: 1 # integer - number of MPI processes for ML training
     procs_pn: 1 # integer - number of MPI processes per node for ML training
-    cpu_bind: [8] #[32,40,48,56] # list - CPU binding for ML training
+    cpu_bind: [4,12,20,28,36,44,52,60] # list - CPU binding for ML training
 
    

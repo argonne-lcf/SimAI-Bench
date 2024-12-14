@@ -21,12 +21,18 @@ TRAIN_CONFIG_NAME="train_config_gnn_debug"
 
 # Set up run
 NODES=$(echo $SLURM_NNODES)
+DICT_NODES=1
+SIM_NODES=1
+ML_NODES=1
 SIM_PROCS_PER_NODE=8
-SIM_RANKS=$((NODES * SIM_PROCS_PER_NODE))
+SIM_RANKS=$((SIM_NODES * SIM_PROCS_PER_NODE))
 ML_PROCS_PER_NODE=8
-ML_RANKS=$((NODES * ML_PROCS_PER_NODE))
+ML_RANKS=$((ML_NODES * ML_PROCS_PER_NODE))
 JOBID=$(echo $SLURM_JOB_ID)
-echo Number of nodes: $NODES
+echo Number of total nodes: $NODES
+echo Number of dictionary nodes: $DICT_NODES
+echo Number of simulation nodes: $SIM_NODES
+echo Number of ML training nodes: $ML_NODES
 echo Number of simulation ranks per node: $SIM_PROCS_PER_NODE
 echo Number of simulation total ranks: $SIM_RANKS
 echo Number of ML ranks per node: $ML_PROCS_PER_NODE
@@ -50,10 +56,11 @@ export NCCL_COLLNET_ENABLE=1
 export MPICH_OFI_NIC_POLICY=BLOCK # Needed to avoid MPICH ERROR: Unable to use a NIC_POLICY of 'NUMA'
 
 # Run
-SIM_ARGS="--backend\=dragon --model\=gnn --problem_size\=debug --launch\=colocated --ppn\=${SIM_PROCS_PER_NODE} --tolerance\=0.002"
+SIM_ARGS="--backend\=dragon --model\=gnn --problem_size\=debug --launch\=clustered --ppn\=${SIM_PROCS_PER_NODE} --tolerance\=0.002"
 dragon $DRIVER --config-path $DRIVER_CONFIG_PATH --config-name $DRIVER_CONFIG_NAME \
-    deployment="colocated" \
+    deployment="clustered" \
     sim.executable=$SIM_EXE sim.arguments="${SIM_ARGS}" \
+    dict.num_nodes=$DICT_NODES sim.num_nodes=$SIM_NODES train.num_nodes=$ML_NODES \
     sim.procs=${SIM_RANKS} sim.procs_pn=${SIM_PROCS_PER_NODE} \
     train.executable=$ML_EXE train.config_path=${TRAIN_CONFIG_PATH} train.config_name=${TRAIN_CONFIG_NAME} \
     train.procs=${ML_RANKS} train.procs_pn=${ML_PROCS_PER_NODE} 

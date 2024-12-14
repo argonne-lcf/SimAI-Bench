@@ -1,3 +1,0 @@
-[2024-12-12 18:38:26,409][api_setup][INFO] - connecting to infrastructure from 1287440
-[2024-12-12 18:38:26,417][api_setup][INFO] - debug entry hooked
-[2024-12-12 18:38:34,035][DD][INFO] - Got KeyError 'BX0AAAAAAAAACwAAAAAAAIBNAAAAAAAAAAAAAAAAAABAmQSI3SAHj0XUkYAKqJGACgAAAAAAAAAAgCUOCgAAAAAvX2RyYWdvbl9iYWxpbl8xMjg3NDEzX19kZWZfbWFuaWZlc3QAAQAAAAAAAAALAAAAAAAAgAAAAAAAAAAA0NABAAAAAAA=' during bringup, sending get random manager request to orchestrator
