@@ -6,20 +6,32 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["online_training"]
+include = ["SimAIBench"]
 
 [project]
-name = "simai_bench"
+name = "SimAI-Bench"
 description = "Benchmarks for coupled simulation and AI/ML workflows"
 authors = [
+    {name = "Hari Tummalapalli", email = "htummalapalli@anl.gov"},
     {name = "Riccardo Balin", email = "rbalin@anl.gov"},
 ]
 version = "0.0.1"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "hydra-core",
-    "gmpy2",
-    "mpipartition",
+    'numpy',
+    'h5py',
+    'mpi4py',
+    'torch',
+    'pytest',
+    'redis',
+    'dragonhpc==0.12rc2',
+    'SciencePlots'
 ]
+optional-dependencies = { 
+    gpu = [
+        "dpnp",
+        "cupy"
+    ]
+}
 urls = {source = "github.com/argonne-lcf/SimAI-Bench"}
