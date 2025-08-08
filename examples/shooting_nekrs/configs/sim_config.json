@@ -1,0 +1,6 @@
+{
+    "sim_telemetry": "configs/sim_telemetry.json",
+    "write_freq": 100, 
+    "nrequests": 1,
+    "data_size": 319488
+}

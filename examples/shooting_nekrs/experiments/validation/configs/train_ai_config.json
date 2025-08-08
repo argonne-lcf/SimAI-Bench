@@ -1,0 +1,8 @@
+{
+    "run_time": 0.061, 
+    "num_iters": 5000, 
+    "read_freq": 10, 
+    "data_size": 319488, 
+    "nrequests": 1,
+    "device": "xpu"
+}

@@ -1,0 +1,15 @@
+{
+    "kernels": [
+        { 
+            "name": "MatMulSimple2D",
+            "run_count":10,
+            "data_size":[32,32,32],
+            "device":"cpu"
+        },
+        { "name": "MatMulGeneral",
+          "run_count":10,
+          "data_size":[32,32,32],
+          "device":"cpu"
+        }
+    ]
+}

@@ -1,0 +1,54 @@
+#!/bin/bash
+#PBS -A datascience
+#PBS -q prod
+#PBS -N redis_simulation
+#PBS -l walltime=00:30:00
+#PBS -l select=<nodes>
+#PBS -l place=scatter
+#PBS -l filesystems=home:flare
+
+cd $PBS_O_WORKDIR
+
+export TZ='/usr/share/zoneinfo/US/Central'
+
+echo Jobid: $PBS_JOBID
+echo Running on host `hostname`
+echo Running on nodes `cat $PBS_NODEFILE`
+module load frameworks
+module list
+
+source /home/ht1410/.envs/wfminiapps/bin/activate
+
+
+run_experiments() {
+    local config=$1
+    local server_location=$2
+    shift 2
+    local sizes=("$@")
+
+    ndb=1
+    for size in "${sizes[@]}"; do
+        for exp in $(seq 0 0); do
+            label2=$(printf "%.2fm_%sdb_exp%d" $(echo "$size / 1000000" | bc -l) "$ndb" "$exp")
+            label1=$(basename "$config" .json)_$server_location
+            export WFMINI_LOG_DIR="logs_${label1}_${label2}"
+            echo "Running size=$size, exp=$exp, config=$config, server_location=$server_location" 
+            backend=$(basename "$config" .json)
+
+            if [ "$backend" == "dragon" ];then
+                dragon workflow.py --server_config "$config" --server_location "$server_location" --data_size "$size"
+            else
+                python3 workflow.py --server_config "$config" --server_location "$server_location" --data_size "$size"
+            fi
+        done
+    done
+}
+
+config=configs/server/redis.json
+server_location="simulation"
+sizes=(10000 100000 500000 1000000 2000000 4000000 8000000 16000000 32000000 64000000)
+if [ -z "$size_idx" ]; then
+    run_experiments $config $server_location "${sizes[@]}"
+else
+    run_experiments $config $server_location "${sizes[${size_idx}]}"
+fi
