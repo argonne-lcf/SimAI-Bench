@@ -1,4 +1,4 @@
-from wfMiniAPI import Workflow, ServerManager
+from SimAIBench import Workflow, ServerManager
 from sim_exec import main as sim_main
 from train_ai_exec import main as train_ai_main
 import os

@@ -17,7 +17,7 @@ echo Running on nodes `cat $PBS_NODEFILE`
 module load frameworks
 module list
 
-source /home/ht1410/.envs/wfminiapps/bin/activate
+source /home/ht1410/.envs/SimAI-Bench/bin/activate
 
 nnodes=$(cat $PBS_NODEFILE | wc -l)
 timestamp=$(date +%s)
@@ -39,9 +39,9 @@ run_experiments() {
             backend=$(basename "$config" .json)
 
             if [ "$backend" == "dragon" ];then
-                dragon workflow.py --server_config "$config" --server_location "$server_location" --data_size "$size" --staging_dir "/lus/flare/projects/datascience/hari/staging/.tmp_${nnodes}_${label1}_${label2}"
+                dragon workflow.py --server_config "$config" --server_location "$server_location" --data_size "$size" --staging_dir "/lus/flare/projects/datascience/hari/staging/.tmp_${nnodes}_${label1}_${label2}_${timestamp}"
             else
-                python3 workflow.py --server_config "$config" --server_location "$server_location" --data_size "$size" --staging_dir "/lus/flare/projects/datascience/hari/staging/.tmp_${nnodes}_${label1}_${label2}"
+                python3 workflow.py --server_config "$config" --server_location "$server_location" --data_size "$size" --staging_dir "/lus/flare/projects/datascience/hari/staging/.tmp_${nnodes}_${label1}_${label2}_${timestamp}"
             fi
         done
     done

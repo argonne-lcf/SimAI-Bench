@@ -6,7 +6,7 @@ creates its own AI model. It is assumed that the training is model parallel.
 import mpi4py
 mpi4py.rc.initialize = False
 from mpi4py import MPI
-from wfMiniAPI.training import AI
+from SimAIBench.training import AI
 import time
 import argparse
 import logging as logging_

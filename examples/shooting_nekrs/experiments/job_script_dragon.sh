@@ -17,7 +17,7 @@ echo Running on nodes `cat $PBS_NODEFILE`
 module load frameworks
 module list
 
-source /home/ht1410/.envs/wfminiapps/bin/activate
+source /home/ht1410/.envs/SimAI-Bench/bin/activate
 
 
 run_experiments() {

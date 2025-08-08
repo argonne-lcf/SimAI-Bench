@@ -1,6 +1,6 @@
 #!/bin/bash
 
-for node in 2 8 32 128 512;do
+for node in 2 ;do
     mkdir -p ${node}nodes
     cd ${node}nodes
     rm -r *

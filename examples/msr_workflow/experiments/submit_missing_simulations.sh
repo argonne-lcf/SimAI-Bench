@@ -2,7 +2,8 @@
 # Usage: bash submit_missing_simulations.sh
 # This script checks which simulation experiments are missing based on log directories and submits jobs for those.
 
-sizes=(10000 100000 500000 1000000 2000000 4000000 8000000 16000000 32000000 64000000)
+# sizes=(10000 100000 500000 1000000 2000000 4000000 8000000 16000000 32000000 64000000)
+sizes=(10000)
 if [ -z "$1" ]; then
     echo "Error: server_location argument is required."
     echo "Usage: bash submit_missing_simulations.sh <server_location>"
@@ -27,7 +28,7 @@ configs=(
     [dragon]="configs/server/dragon.json"
 )
 
-for node in 2 8 32 128 512; do
+for node in 2; do
     node_dir="${node}nodes"
     cd "$node_dir" || continue
     for backend in dragon filesystem redis; do

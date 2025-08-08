@@ -26,12 +26,16 @@ dependencies = [
     'pytest',
     'redis',
     'dragonhpc==0.12rc2',
-    'SciencePlots'
+    'SciencePlots',
+    'pyitt',
+    'ensemble_launcher @ git+https://github.com/argonne-lcf/ensemble_launcher.git'
+
 ]
-optional-dependencies = { 
-    gpu = [
-        "dpnp",
-        "cupy"
-    ]
-}
-urls = {source = "github.com/argonne-lcf/SimAI-Bench"}
+[project.optional-dependencies]
+gpu = [
+    "dpnp",
+    "cupy"
+]
+
+[project.urls]
+source = "github.com/argonne-lcf/SimAI-Bench"
