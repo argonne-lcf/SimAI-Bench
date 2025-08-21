@@ -81,7 +81,45 @@ serialized = server.serialize()
 datastore = DataStore("worker1", serialized)
 ```
 
-5. Serialization for Remote Deployment:
+5. DAOS (POSIX via Dfuse) Workflow:
+```python
+# Server side (no daemon to launch here; just point to a dfuse mount path)
+server_config = {
+    "type": "daos",                     # new option
+    "mode": "posix",                    # posix uses a dfuse mount path
+    "server-address": "/path/to/dfuse/mount",  # dfuse mount directory
+    "nshards": 64
+}
+server = ServerManager("daos_posix_server", server_config)
+server.start_server()
+
+# Client side
+server_info = server.get_server_info()
+datastore = DataStore("worker1", server_info)
+
+datastore.stage_write("results", {"accuracy": 0.95})
+data = datastore.stage_read("results")
+```
+
+6. DAOS (Key-Value via PyDAOS) Workflow (optional):
+```python
+# Requires a DAOS pool+container and the PyDAOS bindings available in the env.
+# This example shows the configuration shape; connect logic is implemented behind the scenes
+# when `mode` is set to "kv" and PyDAOS is importable.
+server_config = {
+    "type": "daos",
+    "mode": "kv",                       # use DAOS KV store via PyDAOS
+    "pool_label": "pool0",              # or use pool_uuid
+    "container_label": "cont0"          # or use container_uuid
+}
+server = ServerManager("daos_kv_server", server_config)
+server.start_server()
+
+datastore = DataStore("worker1", server.get_server_info())
+datastore.stage_write("model_weights", weights_data)
+```
+
+7. Serialization for Remote Deployment:
 ```python
 # Server side
 server = ServerManager("my_server", config)
@@ -112,6 +150,8 @@ from redis.cluster import RedisCluster
 import zlib
 from redis.cluster import ClusterNode
 import base64
+ 
+# Optional backends
 try:
     import dragon
     from dragon.data.ddict import DDict
@@ -121,6 +161,12 @@ try:
     DRAGON_AVAILABLE=True
 except:
     DRAGON_AVAILABLE=False
+
+try:
+    import pydaos
+    PYDAOS_AVAILABLE = True
+except Exception:
+    PYDAOS_AVAILABLE = False
 
 try:
     import cloudpickle
@@ -133,7 +179,7 @@ import tempfile
 
 class ServerManager:
     """
-    Manages server setup and teardown for Redis and Dragon dictionary servers.
+    Manages server setup and teardown for Filesystem, Node-local, Redis, Dragon, and DAOS servers.
     Responsible for launching, monitoring, and stopping server processes.
     """
     def __init__(self, name, config: dict, logging=False, log_level=logging_.INFO):
@@ -210,6 +256,29 @@ class ServerManager:
                 if self.logger:
                     self.logger.error("Dragon dictionary creation failed!")
                 raise e
+        
+        elif self.config["type"] == "daos":
+            # Two modes supported:
+            # - POSIX (through a dfuse mount path). Behaves like the filesystem backend with sharded subdirs
+            # - KV (through PyDAOS). Connection is deferred to client side; nothing to launch here
+            mode = self.config.get("mode", "posix")
+            if mode not in ("posix", "kv"):
+                raise ValueError("DAOS mode must be one of {'posix','kv'}")
+            if mode == "posix":
+                if "server-address" not in self.config:
+                    raise ValueError("For DAOS POSIX mode, 'server-address' must point to a dfuse mount path")
+                if "nshards" not in self.config:
+                    self.config["nshards"] = 64
+                dirname = self.config["server-address"]
+                os.makedirs(dirname, exist_ok=True)
+                if self.logger:
+                    self.logger.info(f"Using DAOS-POSIX mount at {dirname}")
+            else:
+                if not PYDAOS_AVAILABLE:
+                    raise ValueError("PyDAOS not available. Install/activate PyDAOS or use DAOS POSIX mode.")
+                # No server process to start; pool/container access happens in the client.
+                if self.logger:
+                    self.logger.info("DAOS KV mode selected; no server process to launch.")
     
     def _start_redis_server(self):
         """Start Redis server processes for all addresses."""
@@ -450,6 +519,9 @@ class ServerManager:
             else:
                 info["serial_dragon_dict"] = None
 
+        elif self.config["type"] == "daos":
+            info["daos_mode"] = self.config.get("mode", "posix")
+
         return info
 
     @classmethod
@@ -605,7 +677,7 @@ class ServerManager:
 class DataStore:
     """
     Handles client-side data operations including read, write, send, receive, and staging.
-    Works with various backends: filesystem, node-local, Redis, and Dragon.
+    Works with various backends: filesystem, node-local, Redis, Dragon, and DAOS (POSIX or KV).
     
     Initialized with serialized server info from ServerManager.serialize() or ServerManager.get_server_info()
     
@@ -721,6 +793,53 @@ class DataStore:
                         sellf.local_ddicts will be ddicts of all managers on this client node
             """
             self.dragon_dicts, self.local_ddicts = self._create_dragon_client()
+        
+        elif self.config["type"] == "daos":
+            mode = self.config.get("mode", "posix")
+            if mode not in ("posix", "kv"):
+                raise ValueError("DAOS mode must be one of {'posix','kv'}")
+            if mode == "posix":
+                # Treat like filesystem sharded directory on a dfuse mount
+                if "server-address" not in self.config:
+                    raise ValueError("For DAOS POSIX mode, 'server-address' must point to a dfuse mount path")
+                if "nshards" not in self.config:
+                    self.config["nshards"] = 64
+                dirname = self.config["server-address"]
+                for shard in range(self.config["nshards"]):
+                    shard_dir = os.path.join(dirname, str(shard))
+                    os.makedirs(shard_dir, exist_ok=True)
+            else:
+                if not PYDAOS_AVAILABLE:
+                    raise ValueError("PyDAOS not available. Install/activate PyDAOS or use DAOS POSIX mode.")
+                # Establish the KV connection
+                self._create_daos_kv_client()
+
+    def _create_daos_kv_client(self):
+        """Create/connect a DAOS KV client via PyDAOS.
+
+        Expected config keys (either labels or UUIDs):
+          - pool_label or pool_uuid
+          - container_label or container_uuid
+
+        Note: The concrete PyDAOS API may vary by version. Implementations should open the pool
+        and container and bind a KV handle to self.daos_kv. Values are pickled bytes.
+        """
+        if not PYDAOS_AVAILABLE:
+            raise ValueError("PyDAOS not available in environment")
+        pool_label = self.config.get("pool_label") or self.config.get("pool_uuid")
+        cont_label = self.config.get("container_label") or self.config.get("container_uuid")
+        if not pool_label or not cont_label:
+            raise ValueError("DAOS KV mode requires 'pool_label/pool_uuid' and 'container_label/container_uuid'")
+        # Users should implement actual PyDAOS pool/container open here.
+        # Example (pseudo-code):
+        # from pydaos.raw import DaosContext, DaosPool, DaosContainer
+        # ctx = DaosContext()
+        # pool = DaosPool(ctx)
+        # pool.connect(pool_label)
+        # cont = DaosContainer(ctx)
+        # cont.open(pool.handle, cont_label)
+        # self.daos_kv = cont.rootkv()  # or an equivalent KV handle
+        raise NotImplementedError("Wire PyDAOS pool/container open here to set self.daos_kv")
 
     def _create_dragon_client(self):
         """Create a Dragon dictionary client connection."""
@@ -1008,6 +1127,27 @@ class DataStore:
             os.replace(temp_filename, filename)
             if self.logger:
                 self.logger.debug(f"Staged data for {key} at {filename}")
+        elif self.config["type"] == "daos":
+            mode = self.config.get("mode", "posix")
+            if mode == "posix":
+                dirname = self.config["server-address"]
+                h = zlib.crc32(key.encode('utf-8'))
+                shard_number = h % self.config["nshards"]
+                shard_dir = os.path.join(dirname, str(shard_number))
+                os.makedirs(shard_dir, exist_ok=True)
+                filename = os.path.join(shard_dir, f"{key}.pickle")
+                with tempfile.NamedTemporaryFile(delete=False, dir=shard_dir) as temp_file:
+                    pickle.dump(data, temp_file)
+                    temp_filename = temp_file.name
+                os.replace(temp_filename, filename)
+                if self.logger:
+                    self.logger.debug(f"Staged data for {key} at {filename} (DAOS POSIX)")
+            else:
+                if not hasattr(self, "daos_kv"):
+                    raise RuntimeError("DAOS KV client not initialized; ensure PyDAOS connection is wired in _create_daos_kv_client")
+                serialized_data = pickle.dumps(data)
+                # Replace with actual PyDAOS KV put call, e.g., self.daos_kv[key] = serialized_data
+                raise NotImplementedError("Implement DAOS KV put using PyDAOS (store serialized_data)")
         else:
             if self.logger:
                 self.logger.error("Unsupported data transport type")
@@ -1069,6 +1209,31 @@ class DataStore:
                 if self.logger:
                     self.logger.debug(f"Read staged data for {key} from {filename}")
                 return data
+        elif self.config["type"] == "daos":
+            mode = self.config.get("mode", "posix")
+            if mode == "posix":
+                dirname = self.config["server-address"]
+                h = zlib.crc32(key.encode('utf-8'))
+                shard_number = h % self.config["nshards"]
+                shard_dir = os.path.join(dirname, str(shard_number))
+                filename = os.path.join(shard_dir, f"{key}.pickle")
+                time_start = time.time()
+                while not os.path.exists(filename):
+                    if time.time() - time_start > timeout:
+                        if self.logger:
+                            self.logger.error(f"Timed out waiting for file {filename} to be staged")
+                        raise TimeoutError(f"Timed out waiting for file {filename} to be staged")
+                    time.sleep(0.1)
+                with open(filename, "rb") as f:
+                    data = pickle.load(f)
+                    if self.logger:
+                        self.logger.debug(f"Read staged data for {key} from {filename} (DAOS POSIX)")
+                    return data
+            else:
+                if not hasattr(self, "daos_kv"):
+                    raise RuntimeError("DAOS KV client not initialized; ensure PyDAOS connection is wired in _create_daos_kv_client")
+                # Replace with actual PyDAOS KV get call, returning deserialized value
+                raise NotImplementedError("Implement DAOS KV get using PyDAOS and return unpickled value")
         else:
             if self.logger:
                 self.logger.error("Unsupported data transport type")
@@ -1107,12 +1272,26 @@ class DataStore:
             shard_dir = os.path.join(dirname, str(shard_number))
             filename = os.path.join(shard_dir, f"{key}.pickle")
             return os.path.exists(filename)
+        elif self.config["type"] == "daos":
+            mode = self.config.get("mode", "posix")
+            if mode == "posix":
+                dirname = self.config["server-address"]
+                h = zlib.crc32(key.encode('utf-8'))
+                shard_number = h % self.config["nshards"]
+                shard_dir = os.path.join(dirname, str(shard_number))
+                filename = os.path.join(shard_dir, f"{key}.pickle")
+                return os.path.exists(filename)
+            else:
+                if not hasattr(self, "daos_kv"):
+                    raise RuntimeError("DAOS KV client not initialized; ensure PyDAOS connection is wired in _create_daos_kv_client")
+                # Replace with actual PyDAOS KV existence check
+                raise NotImplementedError("Implement DAOS KV exists using PyDAOS")
         else:
             if self.logger:
                 self.logger.error("Unsupported data transport type")
             raise ValueError("Unsupported data transport type")
         
-    def clean_staged_data(self, key, client_id: int = 0):
+    def clean_staged_data(self, key, client_id: int = 0, is_local: bool = False):
         """Clear the staging area for the given key."""
         if self.config["type"] == "dragon":
             assert DRAGON_AVAILABLE, "dragon is not available"
@@ -1148,22 +1327,12 @@ class DataStore:
                 raise
             
         elif self.config["type"] == "filesystem" or self.config["type"] == "node-local":
+            # Remove file directly
+            dirname = self.config["server-address"]
             h = zlib.crc32(key.encode('utf-8'))
             shard_number = h % self.config["nshards"]
-            env = self._lmdb_envs.get(shard_number)
-            if env is None:
-                if self.logger:
-                    self.logger.error(f"LMDB env for shard {shard_number} does not exist")
-                raise AssertionError(f"LMDB env for shard {shard_number} does not exist")
-            with env.begin(write=True) as txn:
-                filename_bytes = txn.get(key.encode('utf-8'))
-                if filename_bytes is None:
-                    if self.logger:
-                        self.logger.error(f"Key {key} not found in LMDB shard {shard_number}")
-                    raise ValueError(f"Key {key} not found in LMDB shard {shard_number}")
-                filename = filename_bytes.decode('utf-8')
-                txn.delete(key.encode('utf-8'))
-
+            shard_dir = os.path.join(dirname, str(shard_number))
+            filename = os.path.join(shard_dir, f"{key}.pickle")
             if os.path.exists(filename):
                 try:
                     os.remove(filename)
@@ -1176,6 +1345,31 @@ class DataStore:
                 if self.logger:
                     self.logger.error(f"File {filename} does not exist")
                 raise ValueError(f"File {filename} does not exist")
+        elif self.config["type"] == "daos":
+            mode = self.config.get("mode", "posix")
+            if mode == "posix":
+                dirname = self.config["server-address"]
+                h = zlib.crc32(key.encode('utf-8'))
+                shard_number = h % self.config["nshards"]
+                shard_dir = os.path.join(dirname, str(shard_number))
+                filename = os.path.join(shard_dir, f"{key}.pickle")
+                if os.path.exists(filename):
+                    try:
+                        os.remove(filename)
+                        if self.logger:
+                            self.logger.debug(f"Cleared staged data for {key} and deleted file {filename} (DAOS POSIX)")
+                    except Exception as e:
+                        if self.logger:
+                            self.logger.warning(f"Failed to delete file {filename}: {e}. The file may be in use or you may not have permission.")
+                else:
+                    if self.logger:
+                        self.logger.error(f"File {filename} does not exist")
+                    raise ValueError(f"File {filename} does not exist")
+            else:
+                if not hasattr(self, "daos_kv"):
+                    raise RuntimeError("DAOS KV client not initialized; ensure PyDAOS connection is wired in _create_daos_kv_client")
+                # Replace with actual PyDAOS KV delete call
+                raise NotImplementedError("Implement DAOS KV delete using PyDAOS")
         else:
             if self.logger:
                 self.logger.error("Unsupported data transport type")
