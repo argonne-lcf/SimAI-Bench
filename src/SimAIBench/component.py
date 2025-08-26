@@ -830,16 +830,8 @@ class DataStore:
         cont_label = self.config.get("container_label") or self.config.get("container_uuid")
         if not pool_label or not cont_label:
             raise ValueError("DAOS KV mode requires 'pool_label/pool_uuid' and 'container_label/container_uuid'")
-        # Users should implement actual PyDAOS pool/container open here.
-        # Example (pseudo-code):
-        # from pydaos.raw import DaosContext, DaosPool, DaosContainer
-        # ctx = DaosContext()
-        # pool = DaosPool(ctx)
-        # pool.connect(pool_label)
-        # cont = DaosContainer(ctx)
-        # cont.open(pool.handle, cont_label)
-        # self.daos_kv = cont.rootkv()  # or an equivalent KV handle
-        raise NotImplementedError("Wire PyDAOS pool/container open here to set self.daos_kv")
+        self.daos_cont = pydaos.DCont(pool_label, cont_label)
+        self.daos_kv = self.daos_cont.dict("default")
 
     def _create_dragon_client(self):
         """Create a Dragon dictionary client connection."""
@@ -1146,8 +1138,8 @@ class DataStore:
                 if not hasattr(self, "daos_kv"):
                     raise RuntimeError("DAOS KV client not initialized; ensure PyDAOS connection is wired in _create_daos_kv_client")
                 serialized_data = pickle.dumps(data)
-                # Replace with actual PyDAOS KV put call, e.g., self.daos_kv[key] = serialized_data
-                raise NotImplementedError("Implement DAOS KV put using PyDAOS (store serialized_data)")
+                self.daos_kv[key] = serialized_data
+
         else:
             if self.logger:
                 self.logger.error("Unsupported data transport type")
@@ -1232,8 +1224,9 @@ class DataStore:
             else:
                 if not hasattr(self, "daos_kv"):
                     raise RuntimeError("DAOS KV client not initialized; ensure PyDAOS connection is wired in _create_daos_kv_client")
-                # Replace with actual PyDAOS KV get call, returning deserialized value
-                raise NotImplementedError("Implement DAOS KV get using PyDAOS and return unpickled value")
+                if key not in self.daos_kv:
+                    raise ValueError(f"{key} doesn't exist")
+                return pickle.loads(self.daos_kv[key])
         else:
             if self.logger:
                 self.logger.error("Unsupported data transport type")
@@ -1284,8 +1277,7 @@ class DataStore:
             else:
                 if not hasattr(self, "daos_kv"):
                     raise RuntimeError("DAOS KV client not initialized; ensure PyDAOS connection is wired in _create_daos_kv_client")
-                # Replace with actual PyDAOS KV existence check
-                raise NotImplementedError("Implement DAOS KV exists using PyDAOS")
+                return key in self.daos_kv
         else:
             if self.logger:
                 self.logger.error("Unsupported data transport type")
@@ -1368,8 +1360,9 @@ class DataStore:
             else:
                 if not hasattr(self, "daos_kv"):
                     raise RuntimeError("DAOS KV client not initialized; ensure PyDAOS connection is wired in _create_daos_kv_client")
-                # Replace with actual PyDAOS KV delete call
-                raise NotImplementedError("Implement DAOS KV delete using PyDAOS")
+                if key not in self.daos_kv:
+                    raise ValueError(f"{key} doesn't exist")
+                del self.daos_kv[key]
         else:
             if self.logger:
                 self.logger.error("Unsupported data transport type")

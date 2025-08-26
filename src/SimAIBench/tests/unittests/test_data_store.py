@@ -13,5 +13,7 @@ def test_daos(config:dict={"type":"daos","mode":"posix","server-address":f"/tmp/
 
 
 if __name__ == "__main__":
-    test_daos()
+    # test_daos()
+    test_daos({"type":"daos","mode":"kv","pool_label":"datascience","container_label":"test_daos"})
+    print("All tests finished successfully")
 
