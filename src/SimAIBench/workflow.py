@@ -6,30 +6,17 @@ import argparse
 import json
 from typing import Dict, List, Optional, Union, Callable, Any
 from dataclasses import dataclass, field
-from SimAIBench.launcher import BasicLauncher
-
-
-@dataclass
-class WorkflowComponent:
-    """Represents a component in the workflow."""
-    # Required fields (no defaults) must come first
-    name: str
-    executable: Union[str, Callable]
-    type: str  # should belong to the list ["local", "remote", "dragon"]
-    args: Dict[str, Any] = field(default_factory=dict)  # Arguments for the component
-    nodes: List[str] = field(default_factory=list)
-    ppn: int = 1
-    num_gpus_per_process: int = 0
-    cpu_affinity: List[int] = None
-    gpu_affinity: List[str] = None
-    env_vars: Dict[str, str] = field(default_factory=dict)
-    dependencies: List[str] = field(default_factory=list)  # Other component names this depends on
+from SimAIBench.orchestrator import Orchestrator
+import networkx as nx
+from typing import Union, List, Dict, Any
+from SimAIBench import WorkflowComponent
+from concurrent.futures import Future
 
 
 class Workflow:
     """
-    Generic workflow orchestration class responsible for registering components 
-    and coordinating their execution via a launcher.
+    Workflow orchestration class responsible for registering components and 
+    submitting to launcher for execution.
     """
     
     def __init__(self, **config_files):
@@ -52,8 +39,8 @@ class Workflow:
         # Registered workflow components
         self.components: Dict[str, WorkflowComponent] = {}
         
-        # Launcher instance
-        self.launcher = BasicLauncher(sys_info=self.configs.get('sys_info', {"name": "local"}), launcher_config=self.configs.get('launcher', {"mode": "mpi"}))
+        # orchestrator instance
+        self.orchestrator = None
 
     def register_component(self, name: str, 
                           executable: Union[str, Callable], 
@@ -109,97 +96,6 @@ class Workflow:
     def list_components(self) -> List[str]:
         """List all registered component names."""
         return list(self.components.keys())
-
-    def _resolve_execution_order(self) -> List[List[str]]:
-        """
-        Resolve the execution order of components based on dependencies.
-        
-        Returns:
-            List of component groups that can be executed in parallel
-        """
-        # Simple topological sort for dependency resolution
-        remaining = set(self.components.keys())
-        execution_order = []
-        
-        while remaining:
-            # Find components with no unresolved dependencies
-            ready = []
-            for comp_name in remaining:
-                comp = self.components[comp_name]
-                if all(dep not in remaining for dep in comp.dependencies):
-                    ready.append(comp_name)
-            
-            if not ready:
-                # Circular dependency or missing dependency
-                raise ValueError(f"Circular dependency detected or missing components: {remaining}")
-            
-            execution_order.append(ready)
-            remaining -= set(ready)
-        
-        return execution_order
-    
-    def _launch_component(self, component: WorkflowComponent):
-        """
-        Launch a single workflow component.
-        
-        Args:
-            component: The component to launch
-            
-        Returns:
-            Process object or result code
-        """
-        return self.launcher.launch_component(component)
-    
-    def launch(self, **kwargs) -> int:
-        """
-        Execute the complete workflow by launching all registered components
-        in dependency order.
-        
-        Args:
-            **kwargs: Additional arguments passed to component handlers
-        
-        Returns:
-            0 for success, 1 for failure
-        """
-        if not self.components:
-            print("No components registered in workflow")
-            return 0
-            
-        try:
-            # Get execution order based on dependencies
-            execution_order = self._resolve_execution_order()
-            
-            return_code_all = 0
-            # Execute components in dependency order
-            for component_group in execution_order:
-                group_processes = []
-                
-                for component_name in component_group:
-                    component = self.components[component_name]
-                    print(f"Launching component: {component_name}")
-                    
-                    # Launch the component
-                    process_or_result = self._launch_component(component)
-                    group_processes.append((component_name, process_or_result))
-                
-                # Wait for this group to complete before starting the next
-                if group_processes:
-                    for component_name, process_or_result in group_processes:
-                        return_code = self.launcher.wait_for_component(process_or_result)
-                        
-                        if return_code == 0:
-                            print(f"Component {component_name} completed successfully")
-                        else:
-                            print(f"Component {component_name} failed with return code {return_code}")
-                            return_code_all = 1
-                            # return 1  # Fail fast on first error
-            
-            print("All workflow components completed successfully")
-            return return_code_all
-            
-        except Exception as e:
-            print(f"Workflow execution failed: {e}")
-            return 1
 
     def component(self, func: Callable = None, *, 
                  name: str = None,
@@ -272,3 +168,74 @@ class Workflow:
         
         # Otherwise, this was called with parentheses: @workflow.component() or @workflow.component(args)
         return decorator
+    
+    def launch(self, **kwargs) -> Future:
+        """
+        Execute the complete workflow by launching all registered components
+        in dependency order.
+        
+        Args:
+            **kwargs: Additional arguments passed to component handlers
+        
+        Returns:
+            0 for success, 1 for failure
+        """
+        if not self.components:
+            print("No components registered in workflow")
+            return 0
+            
+        try:
+            # Get execution order based on dependencies
+            ##not needed
+            # execution_order = self._resolve_execution_order()
+            self.orchestrator = Orchestrator(self.components)
+            future = self.orchestrator.launch()
+            return future
+        except Exception as e:
+            print(f"Workflow execution failed: {e}")
+            return 1
+    
+    
+
+
+    # def _resolve_execution_order(self) -> List[List[str]]:
+    #     """
+    #     Resolve the execution order of components based on dependencies.
+        
+    #     Returns:
+    #         List of component groups that can be executed in parallel
+    #     """
+    #     # Simple topological sort for dependency resolution
+    #     remaining = set(self.components.keys())
+    #     execution_order = []
+        
+    #     while remaining:
+    #         # Find components with no unresolved dependencies
+    #         ready = []
+    #         for comp_name in remaining:
+    #             comp = self.components[comp_name]
+    #             dependencies = comp.dependencies.keys() if isinstance(comp.dependencies,dict) else comp.dependencies
+    #             if all(dep not in remaining for dep in dependencies):
+    #                 ready.append(comp_name)
+            
+    #         if not ready:
+    #             # Circular dependency or missing dependency
+    #             raise ValueError(f"Circular dependency detected or missing components: {remaining}")
+            
+    #         execution_order.append(ready)
+    #         remaining -= set(ready)
+        
+    #     return execution_order
+    
+
+        # def _launch_component(self, component: WorkflowComponent):
+        # """
+        # Launch a single workflow component.
+        
+        # Args:
+        #     component: The component to launch
+            
+        # Returns:
+        #     Process object or result code
+        # """
+        # return self.launcher.launch_component(component)

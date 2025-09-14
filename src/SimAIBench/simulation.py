@@ -1,5 +1,5 @@
 import json
-from SimAIBench.component import DataStore
+from SimAIBench.datastore import DataStore
 import time
 from SimAIBench.kernel import *
 import os

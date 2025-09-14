@@ -10,7 +10,7 @@ try:
     import oneccl_bindings_for_pytorch
 except ModuleNotFoundError as e:
     pass
-from .component import DataStore
+from SimAIBench.datastore import DataStore
 import time
 import socket
 import sys
