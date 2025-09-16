@@ -11,6 +11,7 @@ import networkx as nx
 from typing import Union, List, Dict, Any
 from SimAIBench.component import WorkflowComponent
 from concurrent.futures import Future
+from SimAIBench.config import OchestratorConfig, SystemConfig
 
 
 class Workflow:
@@ -19,7 +20,9 @@ class Workflow:
     submitting to launcher for execution.
     """
     
-    def __init__(self, **config_files):
+    def __init__(self,orchestrator_config: Orchestrator=OchestratorConfig(), 
+                 system_config: SystemConfig = SystemConfig(name="local"),
+                 **config_files):
         """
         Initialize workflow.
         
@@ -41,6 +44,8 @@ class Workflow:
         
         # orchestrator instance
         self.orchestrator = None
+        self.orchestrator_config = orchestrator_config
+        self.sys_config = system_config
 
     def register_component(self, name: str, 
                           executable: Union[str, Callable], 
@@ -184,58 +189,6 @@ class Workflow:
             print("No components registered in workflow")
             return 0
             
-        # try:
-        #     # Get execution order based on dependencies
-        #     ##not needed
-        #     # execution_order = self._resolve_execution_order()
-        self.orchestrator = Orchestrator(self.components)
+        self.orchestrator = Orchestrator(self.components, sys_info=self.sys_config, config=self.orchestrator_config)
         future = self.orchestrator.launch()
         return future
-        # except Exception as e:
-        #     print(f"Workflow execution failed: {e}")
-        #     return 1
-    
-    
-
-
-    # def _resolve_execution_order(self) -> List[List[str]]:
-    #     """
-    #     Resolve the execution order of components based on dependencies.
-        
-    #     Returns:
-    #         List of component groups that can be executed in parallel
-    #     """
-    #     # Simple topological sort for dependency resolution
-    #     remaining = set(self.components.keys())
-    #     execution_order = []
-        
-    #     while remaining:
-    #         # Find components with no unresolved dependencies
-    #         ready = []
-    #         for comp_name in remaining:
-    #             comp = self.components[comp_name]
-    #             dependencies = comp.dependencies.keys() if isinstance(comp.dependencies,dict) else comp.dependencies
-    #             if all(dep not in remaining for dep in dependencies):
-    #                 ready.append(comp_name)
-            
-    #         if not ready:
-    #             # Circular dependency or missing dependency
-    #             raise ValueError(f"Circular dependency detected or missing components: {remaining}")
-            
-    #         execution_order.append(ready)
-    #         remaining -= set(ready)
-        
-    #     return execution_order
-    
-
-        # def _launch_component(self, component: WorkflowComponent):
-        # """
-        # Launch a single workflow component.
-        
-        # Args:
-        #     component: The component to launch
-            
-        # Returns:
-        #     Process object or result code
-        # """
-        # return self.launcher.launch_component(component)

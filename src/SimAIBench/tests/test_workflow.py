@@ -1,4 +1,4 @@
-from SimAIBench import Workflow,Simulation
+from SimAIBench import Workflow,Simulation, OchestratorConfig, SystemConfig
 import os, json
 import logging
 
@@ -7,7 +7,8 @@ class RC:
         self.data = data
 
 def test_workflow():
-    my_workflow = Workflow(launcher={"mode":"high throughput"})
+    my_workflow = Workflow(orchestrator_config=OchestratorConfig(name="process-pool"),
+                           system_config=SystemConfig(name="local",ncpus=12,ngpus=0))
     @my_workflow.component(name="sim",type="remote",args={"runcount": RC(100000)})
     def run_simulation(runcount:RC=RC(10000)):
         sim = Simulation(name="sim", logging=True, log_level=logging.DEBUG)

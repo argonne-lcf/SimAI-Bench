@@ -1,5 +1,4 @@
-from SimAIBench import Workflow,Simulation
-import os, json
+from SimAIBench import Workflow,Simulation, OchestratorConfig, SystemConfig
 import logging
 
 class RC:
@@ -7,7 +6,8 @@ class RC:
         self.data = data
 
 def test_workflow():
-    my_workflow = Workflow(launcher={"mode":"high throughput"})
+    my_workflow = Workflow(orchestrator_config=OchestratorConfig(name="process-pool"),
+                           system_config=SystemConfig(name="local",ncpus=12,ngpus=0))
     @my_workflow.component(name="sim",args={"runcount": RC(100000)},ppn=6)
     def run_simulation(runcount:RC=RC(10000)):
         from mpi4py import MPI
