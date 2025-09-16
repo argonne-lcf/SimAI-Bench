@@ -28,14 +28,14 @@ class DAG:
         for c,wc in workflow_components.items():
             logger.debug(f"Adding node '{c}' with {wc.nnodes} nodes")
             graph.add_node(c,component=wc,status="not_ready")
-            if wc.nnodes > 1:
+            if wc.nnodes*wc.ppn > 1:
                 resource_node = c+"_resource"
                 logger.debug(f"Adding resource node '{resource_node}' for multi-node component '{c}'")
                 graph.add_node(resource_node,component=WorkflowComponent(wc.name+"_resource",lambda x: x,"local"),status="not_ready")
         
         ##add all the edges
         for c,wc in workflow_components.items():
-            if wc.nnodes > 1:
+            if wc.nnodes*wc.ppn > 1:
                 for d in workflow_components[c].dependencies:
                     logger.debug(f"Adding edge: {d} -> {c}_resource")
                     graph.add_edge(d,c+"_resource")
@@ -66,13 +66,15 @@ class DAG:
     def _prepare_callables_for_node(self, node_name: str):
         """Create callable for a specific node"""
         logger.debug(f"Preparing callable for node '{node_name}'")
-        wc = self.graph.nodes[node_name]["component"]
-        if wc.nnodes > 1:
+        wc:WorkflowComponent = self.graph.nodes[node_name]["component"]
+        if wc.nnodes*wc.ppn > 1:
             logger.debug(f"Creating MPI callable for multi-node component '{node_name}'")
             self.graph.nodes[node_name]["callable"] = self._get_mpi_callable(wc)
         elif "_resource" in node_name:
             logger.debug(f"Creating resource-aware callable for resource node '{node_name}'")
-            self.graph.nodes[node_name]["callable"] = self._get_resource_aware_callable(wc)
+            original_node_name = node_name.replace("_resource","")
+            original_wc = self.graph.nodes[original_node_name]["component"]
+            self.graph.nodes[node_name]["callable"] = self._get_resource_aware_callable(original_wc)
         else:
             logger.debug(f"Creating regular callable for node '{node_name}'")
             self.graph.nodes[node_name]["callable"] = self._get_regular_callable(wc)
@@ -95,7 +97,7 @@ class DAG:
         logger.debug(f"Added node '{workflow_component.name}' to graph")
         
         # If it's a multi-node component, add resource node
-        if workflow_component.nnodes > 1:
+        if workflow_component.nnodes*workflow_component.ppn > 1:
             resource_node = workflow_component.name + "_resource"
             resource_wc = WorkflowComponent(workflow_component.name + "_resource", lambda x: x, "local")
             self.graph.add_node(resource_node, 
@@ -104,7 +106,7 @@ class DAG:
             logger.debug(f"Added resource node '{resource_node}' for multi-node component")
         
         # Add edges for dependencies
-        if workflow_component.nnodes > 1:
+        if workflow_component.nnodes*workflow_component.ppn > 1:
             for dep in workflow_component.dependencies:
                 self.graph.add_edge(dep, workflow_component.name + "_resource")
                 logger.debug(f"Added edge: {dep} -> {workflow_component.name}_resource")
@@ -119,13 +121,13 @@ class DAG:
         if self.graph.in_degree(workflow_component.name) == 0:
             self.graph.nodes[workflow_component.name]['status'] = 'ready'
             logger.debug(f"Set component '{workflow_component.name}' status to ready (no dependencies)")
-        if workflow_component.nnodes > 1 and self.graph.in_degree(workflow_component.name + "_resource") == 0:
+        if workflow_component.nnodes*workflow_component.ppn > 1 and self.graph.in_degree(workflow_component.name + "_resource") == 0:
             self.graph.nodes[workflow_component.name + "_resource"]["status"] = 'ready'
             logger.debug(f"Set resource node '{workflow_component.name}_resource' status to ready")
         
         # Create callables for the new nodes
         self._prepare_callables_for_node(workflow_component.name)
-        if workflow_component.nnodes > 1:
+        if workflow_component.nnodes*workflow_component.ppn > 1:
             self._prepare_callables_for_node(workflow_component.name + "_resource")
         
         logger.info(f"Successfully updated DAG with component '{workflow_component.name}'")

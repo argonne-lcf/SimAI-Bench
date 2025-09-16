@@ -24,25 +24,16 @@ logging.basicConfig(
 )
 
 class Orchestrator:
-    """
-    """
     def __init__(self, 
                  workflow_components: Dict[str, WorkflowComponent], 
                  sys_info: SystemConfig = SystemConfig(name="local"),
-                 config: OchestratorConfig = OchestratorConfig()):
-        """
-        Initialize the BasicLauncher.
-        
-        Args:
-            system: System name (e.g., "local", "aurora", "polaris")
-            launcher_config: Configuration for the launcher
-        """
+                 config: OchestratorConfig = OchestratorConfig(name="parsl-local")):
         self.logger = logging.getLogger(__name__)
         self.sys_info = sys_info
         self.dag = DAG(workflow_components)
         self.executor = None
         self.sys_info = NodeResourceList.from_config(sys_info)
-        self.cluster_resource = LocalClusterResource(nodes=get_nodes(),system_info=self.sys_info)
+        self.cluster_resource = DistributedClusterResource(nodes=get_nodes(),system_info=self.sys_info)
         self.logger.info("Orchestrator initialized with system: %s", sys_info.__repr__())
         self.config = config
     
@@ -51,14 +42,30 @@ class Orchestrator:
         with TapsExecutor(self.dag,config=self.config) as executor:
             self.executor = executor
             self.logger.info("Starting workflow execution")
-            final_future: Future = self.executor.run(self.cluster_resource)
-
+            success = self.executor.run(self.cluster_resource)
             try:
-                result = final_future.result()
+                while not all([self.dag.graph.nodes[node]["future"].done() for node in self.dag.graph.nodes()]):
+                    time.sleep(5)
                 self.logger.info("Workflow execution completed")
-                self.logger.info("Final result: %s", result)
+                # Count successful and failed tasks
+                successful_tasks = 0
+                failed_tasks = 0
+                
+                for node in self.dag.graph.nodes():
+                    future = self.dag.graph.nodes[node]["future"]
+                    if future.done():
+                        try:
+                            future.result()  # This will raise an exception if the task failed
+                            successful_tasks += 1
+                        except Exception:
+                            failed_tasks += 1
+                
+                self.logger.info("Workflow execution completed - Successful tasks: %d, Failed tasks: %d", 
+                               successful_tasks, failed_tasks)
+                self.cluster_resource.cleanup()
             except Exception as e:
                 self.logger.error(f"Workflow execution failed with Exceptio {e}")
+                self.cluster_resource.cleanup()
                 raise e
         return 1
 

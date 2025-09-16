@@ -109,21 +109,21 @@ class RegularCallable(Callable):
 class ResourceAwareCallable(Callable):
     """Callable that allocates cluster resources for multi-node components."""
     
-    def __init__(self, workflow_component: WorkflowComponent):
-        super().__init__(workflow_component)
-        
+    def __init__(self, original_workflow_component: WorkflowComponent):
+        super().__init__(original_workflow_component)
+        self.__name__ = original_workflow_component.name + "_resource"
         # Store resource requirements (don't create JobResource yet)
-        self.component_name = workflow_component.name
-        self.nnodes = workflow_component.nnodes
-        self.ppn = workflow_component.ppn
-        self.num_gpus_per_process = getattr(workflow_component, 'num_gpus_per_process', 0)
+        self.component_name = self.__name__
+        self.nnodes = original_workflow_component.nnodes
+        self.ppn = original_workflow_component.ppn
+        self.num_gpus_per_process = getattr(original_workflow_component, 'num_gpus_per_process', 0)
         
         # Calculate total resources needed
         self.total_gpus = self.num_gpus_per_process * self.ppn
         
         # Resource allocation settings
         self.max_allocation_attempts = 1000  # Prevent infinite loops
-        self.allocation_retry_delay = 0.1    # Seconds between attempts
+        self.allocation_retry_delay = 0.5    # Seconds between attempts
         self.allocation_timeout = 300        # Total timeout in seconds
 
     def __call__(self, cluster_resource: ClusterResource, *results):
@@ -161,6 +161,7 @@ class ResourceAwareCallable(Callable):
                 allocated, allocated_resource = cluster_resource.allocate(job_resource)
                 if allocated:
                     logger.info(f"Successfully allocated resources for '{self.__name__}' after {allocation_attempts} attempts ({elapsed_time:.1f}s)")
+                    logger.debug(f"Allocated resource: {allocated_resource}")
                     return allocated_resource
                     
             except Exception as e:
@@ -235,9 +236,12 @@ class MPICallable(Callable):
         try:
             # Construct MPI command
             nodes_str = ",".join(job_resource.nodes)
-            full_cmd = f"mpirun -np {self.ppn * self.nnodes} -ppn {self.ppn} --hosts {nodes_str} {self.cmd}"
+            # full_cmd = f"mpirun -np {self.ppn * self.nnodes} -ppn {self.ppn} --hosts {nodes_str} {self.cmd}"
+            full_cmd = f"mpirun -np {self.ppn * self.nnodes} {self.cmd}"
             
-            logger.info(f"Executing MPI command for '{self.component_name}': {full_cmd}")
+            logger.info(f"Executing MPI command for '{self.component_name}'")
+            logger.debug(f"Full commad: {full_cmd}")
+
             
             # Execute MPI command
             result = subprocess.run(full_cmd, shell=True, capture_output=True, text=True)

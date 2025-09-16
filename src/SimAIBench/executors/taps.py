@@ -93,8 +93,8 @@ class TapsExecutor(BaseExecutor):
             logger.debug(f"Submitting task for node: {node}")
             node_obj["future"] = self.engine.submit(node_obj["task"],*args)
 
-        logger.info("DAG execution completed successfully")
-        return node_obj["future"]
+        logger.info("DAG launched successfully")
+        return 0
     
     def __exit__(self, exc_type, exc_value, traceback):
         """Exit context manager - cleanup resources"""

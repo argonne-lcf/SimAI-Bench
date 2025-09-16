@@ -8,6 +8,7 @@ import logging
 from glob import glob
 from typing import Dict, List, Any, Union, Callable
 
+logger = logging.getLogger(__name__)
 try:
     import dragon
     DRAGON_AVAILABLE = True
@@ -19,4 +20,7 @@ def get_nodes():
     nodefile = os.environ.get("PBS_NODEFILE","/dev/null")
     with open(nodefile,"r") as f:
         nodes = [l.split(".") for l in f.readlines()]
-    return nodes if nodes else socket.gethostname()
+    if len(nodes) == 0:
+        nodes = [socket.gethostname()]
+    logger.debug(f"Found nodes {nodes}")
+    return nodes

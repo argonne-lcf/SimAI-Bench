@@ -13,7 +13,12 @@ import zlib
 from redis.cluster import ClusterNode
 import base64
 from .servermanager import ServerManager
- 
+import contextlib
+import uuid
+import fcntl
+import errno
+
+LOGGER_NAME = __name__ 
 # Optional backends
 try:
     import dragon
@@ -64,18 +69,7 @@ class DataStore:
         log_dir = os.getenv("WFMINI_LOG_DIR", "logs")
         # Setup logging
         if logging:
-            self.logger = logging_.getLogger(f"{name}_datastore")
-            self.logger.setLevel(log_level)
-            log_dir = os.path.join(os.getcwd(), log_dir)
-            os.makedirs(log_dir, exist_ok=True)
-        
-            log_file = os.path.join(log_dir, f"{name}_datastore.log")
-            file_handler = logging_.FileHandler(log_file, mode="w")
-            file_handler.setLevel(logging_.INFO)
-        
-            formatter = logging_.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            file_handler.setFormatter(formatter)
-            self.logger.addHandler(file_handler)
+            self.logger = logging_.getLogger(LOGGER_NAME)
         else:
             self.logger = None
 
@@ -737,6 +731,105 @@ class DataStore:
     def get_connections(self):
         """Return a list of connected nodes."""
         return self.connections
+    
+    @contextlib.contextmanager
+    def acquire_lock(self, lock_name: str, acquire_timeout: int = 100, lock_timeout: int = 300):
+        if self.config["type"] == "redis":
+            """
+            Acquire a redis lock.
+            adapted from https://redis.io/glossary/redis-lock/
+            """
+            lock_key = f"lock:{lock_name}"
+            lock_identifier = str(uuid.uuid4()) + ":" + str(time.time())
+
+            if self.logger: self.logger.debug(f"Attempting to acquire lock: {lock_key}")
+
+            redis_conn = self.redis_client[0]
+            end = time.time() + acquire_timeout
+            try:
+                acquired = False
+                while time.time() < end:
+                    if redis_conn.set(lock_key, lock_identifier, nx=True, ex=lock_timeout):
+                        acquired = True
+                        if self.logger: self.logger.debug(f"Lock acquired: {lock_key}")
+                        break
+                    time.sleep(0.1)
+
+                if not acquired:
+                    if self.logger: self.logger.error(f"Lock acquisition timeout: {lock_key}")
+                    raise TimeoutError("Lock not acquired!")
+
+                yield
+
+            finally:
+                if acquired:
+                    current_value = redis_conn.get(lock_key)
+                    if current_value and current_value.decode() == lock_identifier:
+                        redis_conn.delete(lock_key)
+                        if self.logger: self.logger.debug(f"Lock released: {lock_key}")
+        elif self.config["type"] == "filesystem":
+            dirname = self.config["server-address"]
+            lock_key = f"lock:{lock_name}"
+            lock_file_path = os.path.join(dirname, lock_key)
+            
+            # Ensure directory exists
+            os.makedirs(dirname, exist_ok=True)
+            
+            file_handle = None
+            acquired = False
+            
+            try:
+                end = time.time() + acquire_timeout
+                
+                while time.time() < end:
+                    try:
+                        # Create file if it doesn't exist, open for read/write
+                        file_handle = open(lock_file_path, "a+") 
+                        fcntl.flock(file_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        acquired = True
+                        if self.logger:
+                            self.logger.debug(f"Lock acquired: {lock_key}")
+                        break
+                        
+                    except (OSError, IOError) as e:
+                        if file_handle:
+                            file_handle.close()
+                            file_handle = None
+                        
+                        if e.errno in (errno.EAGAIN, errno.EACCES):
+                            # Lock is held by another process
+                            time.sleep(0.1)
+                            continue
+                        else:
+                            # Other error - re-raise
+                            raise
+                
+                if not acquired:
+                    if self.logger:
+                        self.logger.error(f"Lock acquisition timeout: {lock_key}")
+                    raise TimeoutError(f"Could not acquire lock {lock_name} within {acquire_timeout} seconds")
+                
+                yield
+                
+            finally:
+                if acquired and file_handle:
+                    try:
+                        fcntl.flock(file_handle.fileno(), fcntl.LOCK_UN)
+                        file_handle.close()
+                        if self.logger:
+                            self.logger.debug(f"Lock released: {lock_key}")
+                    except Exception as e:
+                        if self.logger:
+                            self.logger.warning(f"Error releasing lock {lock_key}: {e}")
+                elif file_handle:
+                    # Clean up file handle even if lock wasn't acquired
+                    try:
+                        file_handle.close()
+                    except:
+                        pass
+    
+        else:
+            raise ValueError(f"Lock not supported for backend type: {self.config['type']}")
 
     def clean(self):
         """Clean up the datastore."""
