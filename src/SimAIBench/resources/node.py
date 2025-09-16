@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Dict, Any
 from abc import ABC, abstractmethod
+from SimAIBench.config import SystemConfig
 
 @dataclass(frozen=True, eq=True)
 class NodeResource(ABC):
@@ -158,6 +159,14 @@ class NodeResourceList(NodeResource):
             return (other.ncpus <= self.cpu_count and 
                     other.ngpus <= self.gpu_count)
         return False
+    
+    @classmethod
+    def from_config(self, info: SystemConfig):
+        """creates a node resource list from a dict"""
+        return NodeResourceList(
+            cpus=list(range(info.ncpus)),
+            gpus = list(range(info.ngpus))
+        )
 
 
 @dataclass(frozen=True, eq=True)

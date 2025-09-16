@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from SimAIBench.orchestrator import Orchestrator
 import networkx as nx
 from typing import Union, List, Dict, Any
-from SimAIBench import WorkflowComponent
+from SimAIBench.component import WorkflowComponent
 from concurrent.futures import Future
 
 
@@ -184,16 +184,16 @@ class Workflow:
             print("No components registered in workflow")
             return 0
             
-        try:
-            # Get execution order based on dependencies
-            ##not needed
-            # execution_order = self._resolve_execution_order()
-            self.orchestrator = Orchestrator(self.components)
-            future = self.orchestrator.launch()
-            return future
-        except Exception as e:
-            print(f"Workflow execution failed: {e}")
-            return 1
+        # try:
+        #     # Get execution order based on dependencies
+        #     ##not needed
+        #     # execution_order = self._resolve_execution_order()
+        self.orchestrator = Orchestrator(self.components)
+        future = self.orchestrator.launch()
+        return future
+        # except Exception as e:
+        #     print(f"Workflow execution failed: {e}")
+        #     return 1
     
     
 

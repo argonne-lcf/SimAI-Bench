@@ -8,8 +8,8 @@ class RC:
 
 def test_workflow():
     my_workflow = Workflow(launcher={"mode":"high throughput"})
-    @my_workflow.component(name="sim",type="remote",args={"runcount": RC(10)})
-    def run_simulation(runcount:RC=RC(10)):
+    @my_workflow.component(name="sim",type="remote",args={"runcount": RC(100000)})
+    def run_simulation(runcount:RC=RC(10000)):
         sim = Simulation(name="sim", logging=True, log_level=logging.DEBUG)
         ##add two kernels to the simulation
         sim.add_kernel("MatMulSimple2D", run_count=runcount.data)
@@ -22,9 +22,8 @@ def test_workflow():
         sim.run()
 
     # my_workflow.register_component(name="sim3",executable="echo 'Hello from sim3'", type="local",dependencies=["sim","sim2"])
-    assert my_workflow.launch() == 0
+    my_workflow.launch()
 
 
 if __name__ == "__main__":
     test_workflow()
-    print("Workflow test passed!")

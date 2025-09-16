@@ -25,16 +25,17 @@ dependencies = [
     'torch',
     'pytest',
     'redis',
-    'dragonhpc==0.12rc2',
     'SciencePlots',
-    'pyitt',
+    'cloudpickle',
     'ensemble_launcher @ git+https://github.com/argonne-lcf/ensemble_launcher.git'
 
 ]
 [project.optional-dependencies]
 gpu = [
     "dpnp",
-    "cupy"
+    "cupy",
+    'dragonhpc==0.12rc2',
+    'pyitt',
 ]
 
 [project.urls]

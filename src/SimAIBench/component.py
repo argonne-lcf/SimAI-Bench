@@ -22,7 +22,7 @@ class WorkflowComponent:
     # Required fields (no defaults) must come first
     name: str
     executable: Union[str, Callable]
-    type: str  # Indicates the name of the executor to use.
+    type: str  #["remote","local"].
     args: Dict[str, Any] = field(default_factory=dict)  # Arguments for the component
     nodes: List[str] = field(default_factory=list)
     nnodes: int = 1
@@ -31,4 +31,4 @@ class WorkflowComponent:
     cpu_affinity: List[int] = None
     gpu_affinity: List[str] = None
     env_vars: Dict[str, str] = field(default_factory=dict)
-    dependencies: List[Union[str, Dict[str, int]]] = field(default_factory=list)  
+    dependencies: List[Union[str, Dict[str, int]]] = field(default_factory=list)
