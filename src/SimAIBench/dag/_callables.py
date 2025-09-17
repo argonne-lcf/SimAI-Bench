@@ -230,7 +230,7 @@ class MPICallable(Callable):
             logger.error(f"No job resource provided for MPI component '{self.component_name}'")
             raise ValueError("No job resource provided from resource allocation step")
         
-        logger.debug(f"Using job resource with nodes: {job_resource.nodes}")
+        logger.debug(f"Using job resource with nodes: {job_resource.nodes} cpus: {job_resource.resources[0].cpus} gpus:{job_resource.resources[0].gpus}")
         logger.debug(f"Executable type: {self.executable_type}")
         
         try:
@@ -250,7 +250,7 @@ class MPICallable(Callable):
             
             if result.returncode != 0:
                 logger.error(f"MPI execution failed for '{self.component_name}': {result.stderr}")
-                # You might want to raise an exception here depending on your error handling strategy
+                raise
             else:
                 logger.debug(f"MPI execution output for '{self.component_name}': {result.stdout[:200]}...")
             

@@ -20,9 +20,10 @@ def test_workflow():
         ##add two kernels to the simulation
         sim.add_kernel("MatMulSimple2D", run_count=runcount.data)
         sim.run()
+        print(f"Hello from rank {rank}")
         MPI.Finalize()
 
-    @my_workflow.component(name="sim2",args={"runcount": 22},ppn=7)
+    @my_workflow.component(name="sim2",args={"runcount": 22},ppn=6)
     def sim2(runcount=10):
         from mpi4py import MPI
         MPI.Init()
@@ -33,6 +34,7 @@ def test_workflow():
         sim = Simulation(name="sim2", logging=True, log_level=logging.DEBUG)
         sim.add_kernel("MatMulGeneral", run_count=runcount)
         sim.run()
+        print(f"Hello from rank {rank}")
         MPI.Finalize()
 
     # my_workflow.register_component(name="sim3",executable="echo 'Hello from sim3'", type="local",dependencies=["sim","sim2"])
