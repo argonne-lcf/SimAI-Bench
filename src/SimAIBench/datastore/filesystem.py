@@ -14,8 +14,11 @@ import fcntl
 import errno
 import contextlib
 import logging as logging_
+import shutil
 from typing import Any, Union
 from .base import BaseDataStore, BaseServerManager
+
+from SimAIBench.config import FilesystemServerConfig
 
 
 class DataStoreFilesystem(BaseDataStore):
@@ -32,7 +35,8 @@ class DataStoreFilesystem(BaseDataStore):
         
         # Parse server info
         if isinstance(server_info, str):
-            deserialized_server_info = self.__class__.deserialize(server_info)
+            from .base import BaseServerManager
+            deserialized_server_info = BaseServerManager.deserialize(server_info)
             self.config = deserialized_server_info["config"].copy()
         elif isinstance(server_info, dict):
             if "config" in server_info:
@@ -262,24 +266,24 @@ class ServerManagerFilesystem(BaseServerManager):
     def _setup_server(self):
         """Setup the filesystem server - create directory structure."""
         if self.logger:
-            self.logger.info(f"Setting up {self.config['type']} server on {self.config.get('server-address', 'unknown')}")
+            self.logger.info(f"Setting up {self.config.type} server on {getattr(self.config, 'server_address', 'unknown')}")
         
-        if self.config["type"] == "filesystem":
-            if "server-address" not in self.config:
-                self.config["server-address"] = os.path.join(os.getcwd(), ".tmp")
-            if "nshards" not in self.config:
-                self.config["nshards"] = 64
-            dirname = self.config["server-address"]
+        if self.config.type == "filesystem":
+            if not hasattr(self.config, 'server_address') or not self.config.server_address:
+                self.config.server_address = os.path.join(os.getcwd(), ".tmp")
+            if not hasattr(self.config, 'nshards') or not self.config.nshards:
+                self.config.nshards = 64
+            dirname = self.config.server_address
             os.makedirs(dirname, exist_ok=True)
             if self.logger:
                 self.logger.info(f"Created filesystem directory at {dirname}")
         
-        elif self.config["type"] == "node-local":
-            self.config["server-address"] = "/tmp"
-            if "nshards" not in self.config:
-                self.config["nshards"] = 64
+        elif self.config.type == "node-local":
+            self.config.server_address = "/tmp"
+            if not hasattr(self.config, 'nshards') or not self.config.nshards:
+                self.config.nshards = 64
             if self.logger:
-                self.logger.info(f"Using node-local directory {self.config['server-address']}")
+                self.logger.info(f"Using node-local directory {self.config.server_address}")
     
     def stop_server(self):
         """Stop the filesystem server (no-op since no process is running)."""
@@ -290,7 +294,7 @@ class ServerManagerFilesystem(BaseServerManager):
         """Get information about the filesystem server."""
         info = {
             "name": self.name,
-            "type": self.config["type"],
-            "config": self.config.copy()
+            "type": self.config.type,
+            "config": self.config.model_dump()
         }
         return info

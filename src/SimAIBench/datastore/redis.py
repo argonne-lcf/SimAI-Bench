@@ -11,8 +11,12 @@ import socket
 import subprocess
 import time
 import logging as logging_
+import contextlib
 from typing import Any, Union, List
 from .base import BaseDataStore, BaseServerManager
+
+# Import for type checking
+from SimAIBench.config import RedisServerConfig
 
 try:
     import redis
@@ -41,7 +45,8 @@ class DataStoreRedis(BaseDataStore):
         
         # Parse server info
         if isinstance(server_info, str):
-            deserialized_server_info = self.__class__.deserialize(server_info)
+            from .base import BaseServerManager
+            deserialized_server_info = BaseServerManager.deserialize(server_info)
             self.config = deserialized_server_info["config"].copy()
         elif isinstance(server_info, dict):
             if "config" in server_info:
@@ -234,7 +239,7 @@ class ServerManagerRedis(BaseServerManager):
     Supports both standalone Redis servers and Redis clusters.
     """
     
-    def __init__(self, name: str, config: dict, logging: bool = False, log_level: int = logging_.INFO):
+    def __init__(self, name: str, config: RedisServerConfig, logging: bool = False, log_level: int = logging_.INFO):
         super().__init__(name, config, logging, log_level)
         self.redis_processes = []
         
@@ -248,25 +253,27 @@ class ServerManagerRedis(BaseServerManager):
     def _setup_server(self):
         """Setup Redis server(s)."""
         if self.logger:
-            self.logger.info(f"Setting up Redis server on {self.config.get('server-address', 'unknown')}")
+            self.logger.info(f"Setting up Redis server on {getattr(self.config, 'server_address', 'unknown')}")
         
-        if "redis-server-exe" not in self.config:
-            raise ValueError("redis-server-exe must be specified for Redis server")
-        if "server-address" not in self.config:
+        if not hasattr(self.config, 'redis_server_exe') or not self.config.redis_server_exe:
+            raise ValueError("redis_server_exe must be specified for Redis server")
+        if not hasattr(self.config, 'server_address') or not self.config.server_address:
             raise ValueError("Server address is required")
         self.redis_processes = self._start_redis_server()
     
     def _start_redis_server(self):
         """Start Redis server processes for all addresses."""
-        addresses = self.config["server-address"].split(",")
-        is_clustered = self.config.get("is_clustered", False)
+        addresses = self.config.server_address.split(",")
+        is_clustered = getattr(self.config, 'is_clustered', False)
         redis_processes = []
         
         for address in addresses:
             host = address.strip().split(":")[0]
             port = int(address.strip().split(":")[1])
 
-            cmd_base = f"mpirun -np 1 -ppn 1 -hosts {host} {self.config.get('server-options',{}).get('mpi-options','')} {self.config['redis-server-exe']} --port {port} --bind 0.0.0.0 --protected-mode no --dir /tmp "
+            server_options = getattr(self.config, 'server_options', {})
+            mpi_options = server_options.get('mpi-options', '') if isinstance(server_options, dict) else ''
+            cmd_base = f"mpirun -np 1 -ppn 1 -hosts {host} {mpi_options} {self.config.redis_server_exe} --port {port} --bind 0.0.0.0 --protected-mode no --dir /tmp "
             cmd = f"{cmd_base} --cluster-enabled yes --cluster-config-file {self.name}_{host}_{port}.conf" if is_clustered else cmd_base
                 
             redis_process = subprocess.Popen(cmd, shell=True, env=os.environ.copy(), stdout=subprocess.DEVNULL)
@@ -326,8 +333,8 @@ class ServerManagerRedis(BaseServerManager):
         """Get information about the Redis server."""
         info = {
             "name": self.name,
-            "type": self.config["type"],
-            "config": self.config.copy(),
+            "type": self.config.type,
+            "config": self.config.model_dump(),
             "running": self.poll_redis_server()
         }
         return info

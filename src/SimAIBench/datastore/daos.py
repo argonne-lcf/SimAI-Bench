@@ -14,6 +14,9 @@ import logging as logging_
 from typing import Any, Union
 from .base import BaseDataStore, BaseServerManager
 
+# Import for type checking
+from SimAIBench.config import DaosServerConfig
+
 try:
     import pydaos
     PYDAOS_AVAILABLE = True
@@ -39,7 +42,8 @@ class DataStoreDaos(BaseDataStore):
         
         # Parse server info
         if isinstance(server_info, str):
-            deserialized_server_info = self.__class__.deserialize(server_info)
+            from .base import BaseServerManager
+            deserialized_server_info = BaseServerManager.deserialize(server_info)
             self.config = deserialized_server_info["config"].copy()
         elif isinstance(server_info, dict):
             if "config" in server_info:
@@ -234,18 +238,18 @@ class ServerManagerDaos(BaseServerManager):
     def _setup_server(self):
         """Setup DAOS server configuration."""
         if self.logger:
-            self.logger.info(f"Setting up DAOS server with mode {self.config.get('mode', 'posix')}")
+            self.logger.info(f"Setting up DAOS server with mode {getattr(self.config, 'mode', 'posix')}")
         
-        mode = self.config.get("mode", "posix")
+        mode = getattr(self.config, 'mode', 'posix')
         if mode not in ("posix", "kv"):
             raise ValueError("DAOS mode must be one of {'posix','kv'}")
             
         if mode == "posix":
-            if "server-address" not in self.config:
-                raise ValueError("For DAOS POSIX mode, 'server-address' must point to a dfuse mount path")
-            if "nshards" not in self.config:
-                self.config["nshards"] = 64
-            dirname = self.config["server-address"]
+            if not hasattr(self.config, 'server_address') or not self.config.server_address:
+                raise ValueError("For DAOS POSIX mode, 'server_address' must point to a dfuse mount path")
+            if not hasattr(self.config, 'nshards') or not self.config.nshards:
+                self.config.nshards = 64
+            dirname = self.config.server_address
             os.makedirs(dirname, exist_ok=True)
             if self.logger:
                 self.logger.info(f"Using DAOS-POSIX mount at {dirname}")
@@ -253,8 +257,8 @@ class ServerManagerDaos(BaseServerManager):
             if not PYDAOS_AVAILABLE:
                 raise ValueError("PyDAOS not available. Install/activate PyDAOS or use DAOS POSIX mode.")
             # Validate configuration
-            pool_label = self.config.get("pool_label") or self.config.get("pool_uuid")
-            cont_label = self.config.get("container_label") or self.config.get("container_uuid")
+            pool_label = getattr(self.config, 'pool_label', None) or getattr(self.config, 'pool_uuid', None)
+            cont_label = getattr(self.config, 'container_label', None) or getattr(self.config, 'container_uuid', None)
             if not pool_label or not cont_label:
                 raise ValueError("DAOS KV mode requires 'pool_label/pool_uuid' and 'container_label/container_uuid'")
             if self.logger:
@@ -269,8 +273,8 @@ class ServerManagerDaos(BaseServerManager):
         """Get information about the DAOS server."""
         info = {
             "name": self.name,
-            "type": self.config["type"],
-            "config": self.config.copy(),
-            "daos_mode": self.config.get("mode", "posix")
+            "type": self.config.type,
+            "config": self.config.model_dump(),
+            "daos_mode": getattr(self.config, 'mode', 'posix')
         }
         return info

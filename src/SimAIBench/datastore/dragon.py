@@ -11,6 +11,8 @@ import logging as logging_
 from typing import Any, Union, List
 from .base import BaseDataStore, BaseServerManager
 
+from SimAIBench.config import DragonServerConfig
+
 try:
     import dragon
     from dragon.data.ddict import DDict
@@ -42,7 +44,8 @@ class DataStoreDragon(BaseDataStore):
         
         # Parse server info
         if isinstance(server_info, str):
-            deserialized_server_info = self.__class__.deserialize(server_info)
+            from .base import BaseServerManager
+            deserialized_server_info = BaseServerManager.deserialize(server_info)
             self.config = deserialized_server_info["config"].copy()
             # Add Dragon-specific info if needed
             if deserialized_server_info.get("type") == "dragon" and "serial_dragon_dict" in deserialized_server_info:
@@ -228,7 +231,7 @@ class ServerManagerDragon(BaseServerManager):
     Supports both clustered and non-clustered configurations.
     """
     
-    def __init__(self, name: str, config: dict, logging: bool = False, log_level: int = logging_.INFO):
+    def __init__(self, name: str, config: DragonServerConfig, logging: bool = False, log_level: int = logging_.INFO):
         super().__init__(name, config, logging, log_level)
         self.dragon_dict = None
         
@@ -242,7 +245,7 @@ class ServerManagerDragon(BaseServerManager):
     def _setup_server(self):
         """Setup Dragon dictionary server."""
         if self.logger:
-            self.logger.info(f"Setting up Dragon server on {self.config.get('server-address', 'unknown')}")
+            self.logger.info(f"Setting up Dragon server on {getattr(self.config, 'server_address', 'unknown')}")
         
         try:
             self.dragon_dict = self._start_dragon_dictionary()
@@ -260,17 +263,19 @@ class ServerManagerDragon(BaseServerManager):
     
     def _start_dragon_dictionary(self):
         """Start a Dragon dictionary server."""
-        addresses = self.config["server-address"].split(",")
-        is_clustered = self.config.get("is_clustered", False)
+        addresses = self.config.server_address.split(",")
+        is_clustered = getattr(self.config, 'is_clustered', False)
         nodes = [address.split(":")[0] for address in addresses]
         ports = [address.split(":")[1] for address in addresses]
         n_nodes = len(nodes)
-        n_nodes_in = self.config.get("server-options", {}).get("n_nodes", None)
+        server_options = getattr(self.config, 'server_options', {})
+        n_nodes_in = server_options.get("n_nodes", None) if isinstance(server_options, dict) else None
         
         if n_nodes_in is not None and n_nodes_in != n_nodes:
             if self.logger:
-                self.logger.warning("Number of nodes in server-address differs from options. Using server-address count.")
-            self.config["server-options"]["n_nodes"] = n_nodes
+                self.logger.warning("Number of nodes in server_address differs from options. Using server_address count.")
+            if isinstance(server_options, dict):
+                server_options["n_nodes"] = n_nodes
         
         policies = []
         for node in nodes:
@@ -370,8 +375,8 @@ class ServerManagerDragon(BaseServerManager):
         """Get information about the Dragon server."""
         info = {
             "name": self.name,
-            "type": self.config["type"],
-            "config": self.config.copy(),
+            "type": self.config.type,
+            "config": self.config.model_dump(),
             "dragon_dict": self.dragon_dict
         }
         

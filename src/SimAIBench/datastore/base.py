@@ -9,6 +9,8 @@ from typing import Union, List, Dict, Optional, Any
 import logging as logging_
 import contextlib
 
+from SimAIBench.config import ServerConfig
+
 
 class BaseDataStore(ABC):
     """
@@ -127,13 +129,13 @@ class BaseServerManager(ABC):
     Responsible for launching, monitoring, and stopping server processes.
     """
     
-    def __init__(self, name: str, config: dict, logging: bool = False, log_level: int = logging_.INFO):
+    def __init__(self, name: str, config: ServerConfig, logging: bool = False, log_level: int = logging_.INFO):
         """
         Initialize the ServerManager.
         
         Args:
             name: Name of the server instance
-            config: Configuration dictionary for the server
+            config: Configuration object for the server
             logging: Enable logging (default: False)
             log_level: Logging level (default: logging.INFO)
         """

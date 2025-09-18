@@ -14,6 +14,8 @@ from .filesystem import DataStoreFilesystem, ServerManagerFilesystem
 from .redis import DataStoreRedis, ServerManagerRedis
 from .dragon import DataStoreDragon, ServerManagerDragon
 from .daos import DataStoreDaos, ServerManagerDaos
+from SimAIBench.config import ServerConfig
+
 
 
 # Registry of available backends
@@ -163,12 +165,12 @@ class ServerManager:
         log_level: Logging level (default: logging.INFO)
     """
     
-    def __init__(self, name: str, config: dict, logging: bool = False, log_level: int = logging_.INFO):
+    def __init__(self, name: str, config: ServerConfig, logging: bool = False, log_level: int = logging_.INFO):
         self.name = name
         self.config = config
         
         # Determine backend type from config
-        backend_type = config.get("type")
+        backend_type = config.type
         if not backend_type:
             raise ValueError("Configuration must contain 'type' field")
         

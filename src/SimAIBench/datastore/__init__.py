@@ -5,7 +5,7 @@ This module provides a unified interface for data storage and server management
 across multiple backend implementations including filesystem, Redis, Dragon, and DAOS.
 
 The module uses wrapper classes that automatically delegate to the appropriate backend
-based on configuration, maintaining the original API design.
+based on configuration.
 
 Usage Examples:
 
