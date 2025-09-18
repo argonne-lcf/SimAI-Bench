@@ -287,8 +287,21 @@ class ServerManagerFilesystem(BaseServerManager):
     
     def stop_server(self):
         """Stop the filesystem server (no-op since no process is running)."""
+        
+        # Clean up the filesystem directory if it exists
+        if hasattr(self.config, 'server_address') and self.config.server_address:
+            dirname = self.config.server_address
+            if os.path.exists(dirname) and dirname != "/tmp":  # Safety check to avoid deleting /tmp
+                try:
+                    shutil.rmtree(dirname)
+                    if self.logger:
+                        self.logger.info(f"Removed filesystem directory {dirname}")
+                except Exception as e:
+                    if self.logger:
+                        self.logger.error(f"Failed to remove directory {dirname}: {e}")
+        
         if self.logger:
-            self.logger.info("Filesystem server stopped (no process to terminate)")
+            self.logger.info("Filesystem server stopped")
     
     def get_server_info(self) -> dict:
         """Get information about the filesystem server."""

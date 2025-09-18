@@ -17,10 +17,12 @@ from SimAIBench.config import SystemConfig, OchestratorConfig
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('orchestrator.log', mode='w')
-    ]
+    encoding='utf-8',
+    errors='replace',
+    # handlers=[
+    #     logging.StreamHandler(),
+    #     logging.FileHandler('orchestrator.log',  mode='w', encoding='utf-8')
+    # ]
 )
 
 class Orchestrator:

@@ -48,9 +48,9 @@ class ServerConfigRegistry:
             raise ValueError(error_msg)
         return self._configs[server_type]
     
-    def create_config(self, server_type: str, **kwargs) -> ServerConfig:
+    def create_config(self, type: str, **kwargs) -> ServerConfig:
         """Create a server config instance for a given type"""
-        config_class = self.get_config_class(server_type)
+        config_class = self.get_config_class(type)
         return config_class(**kwargs)
     
     def list_types(self) -> list[str]:

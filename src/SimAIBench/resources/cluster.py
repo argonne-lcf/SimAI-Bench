@@ -7,6 +7,7 @@ import uuid
 import time
 import logging
 from SimAIBench.resources import NodeResource, JobResource, NodeResourceCount, NodeResourceList
+from SimAIBench.config import server_registry
 
 SUPPORTED_BACKENDS = ["redis","filesystem"]
 # Configure logging
@@ -21,7 +22,7 @@ class ClusterResource(ABC):
     """
 
     def __init__(self, nodes: List[str], system_info: NodeResource):
-        logger.info(f"Initializing {self.__class__.__name__} with {len(nodes)} nodes with each node config {system_info}")
+        logger.info(f"Initializing {self.__class__.__name__} with {len(nodes)} nodes with each node config {system_info.__repr__()}")
         self._system_info = system_info
         self._nodes = {node: system_info for node in nodes}
         logger.debug(f"Node configuration: {list(self._nodes.keys())}")
@@ -197,10 +198,12 @@ class DistributedClusterResource(ClusterResource):
             "server-address": ",".join([f"{node}:7257" for node in self._nodes.keys()]),
             "redis-server-exe": f"{os.environ.get('SIMAIBENCH_REDIS_CLI', default_redis_server)}"
             }
+            server_config = server_registry.create_config(**server_config)
         else:
             server_config = {
                 "type": self.ds_backend,
             }
+            server_config = server_registry.create_config(**server_config)
         
         logger.debug(f"Server config: {server_config}")
         

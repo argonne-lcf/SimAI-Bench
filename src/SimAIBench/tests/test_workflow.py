@@ -1,28 +1,36 @@
-from SimAIBench import Workflow,Simulation, OchestratorConfig, SystemConfig
+from SimAIBench import Workflow,Simulation, OchestratorConfig, SystemConfig, server_registry
+from SimAIBench import ServerManager, DataStore
 import os, json
 import logging
 
-class RC:
-    def __init__(self, data:int):
-        self.data = data
-
 def test_workflow():
+    ##create a workflow
     my_workflow = Workflow(orchestrator_config=OchestratorConfig(name="process-pool"),
                            system_config=SystemConfig(name="local",ncpus=12,ngpus=0))
-    @my_workflow.component(name="sim",type="remote",args={"runcount": RC(100000)})
-    def run_simulation(runcount:RC=RC(10000)):
-        sim = Simulation(name="sim", logging=True, log_level=logging.DEBUG)
-        ##add two kernels to the simulation
-        sim.add_kernel("MatMulSimple2D", run_count=runcount.data)
-        sim.run()
+    
+    ##create server
+    server_config = server_registry.create_config("filesystem")
+    server = ServerManager("server",server_config)
+    server.start_server()
+    server_info = server.get_server_info()
 
-    @my_workflow.component(name="sim2", type="local",args={"runcount": 22})
-    def sim2(runcount=10):
-        sim = Simulation(name="sim2", logging=True, log_level=logging.DEBUG)
+    ##register components
+    @my_workflow.component(name="sim",type="remote",args={"runcount": 100000, "server_info": server_info})
+    def run_simulation(server_info: dict, runcount:int):
+        sim = Simulation(name="sim", logging=True, log_level=logging.DEBUG, server_info=server_info)
+        ##add two kernels to the simulation
+        sim.add_kernel("MatMulSimple2D", run_count=runcount)
+        sim.run()
+        sim.stage_write("key","value-hello")
+
+    @my_workflow.component(name="sim2", type="local",args={"runcount": 22, "server_info": server_info}, dependencies=["sim"])
+    def sim2(server_info: dict, runcount: int):
+        sim = Simulation(name="sim2", logging=True, log_level=logging.DEBUG, server_info= server_info)
         sim.add_kernel("MatMulGeneral", run_count=runcount)
         sim.run()
+        value = sim.stage_read("key")
+        if sim.logger: sim.logger.info(f"Received {value} from sim")
 
-    # my_workflow.register_component(name="sim3",executable="echo 'Hello from sim3'", type="local",dependencies=["sim","sim2"])
     my_workflow.launch()
 
 
