@@ -1,4 +1,4 @@
-from typing import Dict, List, Union, Callable, Any
+from typing import Dict, List, Union, Callable, Any, Sequence
 from dataclasses import dataclass, field
 
 
@@ -17,6 +17,7 @@ class WorkflowComponent:
         gpu_affinity (List[str]): List of GPU device IDs to bind the process to. Optional.
         env_vars (Dict[str, str]): Environment variables to set for the component execution.
         dependencies (List[Union[str, Dict[str, int]]]): List of dependencies for this component, either as component names or dictionaries specifying component names and data size in MB of the message size.
+        return_dim: The array dimensions of the array to be returned by this component
     """
         
     # Required fields (no defaults) must come first
@@ -32,3 +33,4 @@ class WorkflowComponent:
     gpu_affinity: List[str] = None
     env_vars: Dict[str, str] = field(default_factory=dict)
     dependencies: List[Union[str, Dict[str, int]]] = field(default_factory=list)
+    return_dim: Sequence[int] = field(default_factory=list)

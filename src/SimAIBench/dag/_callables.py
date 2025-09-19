@@ -7,6 +7,7 @@ import cloudpickle
 from SimAIBench.resources import ClusterResource, JobResource, NodeResourceCount
 import time
 from functools import partial
+import numpy as np
 
 # Create logger name as module-level constant (serializable)
 LOGGER_NAME = __name__
@@ -28,6 +29,7 @@ class RegularCallable(Callable):
         # EXPLICITLY capture only the data you need (not the entire object)
         self.component_name = workflow_component.name
         self.component_type = getattr(workflow_component, 'type', 'unknown')
+        self.return_array = np.empty(workflow_component.return_dim) if len(workflow_component.return_dim) != 0 else None
         
         # Handle executable - store it appropriately based on type
         if callable(workflow_component.executable):
@@ -97,7 +99,7 @@ class RegularCallable(Callable):
                 if result.returncode != 0:
                     logger.error(f"Shell command failed for '{self.component_name}': {result.stderr}")
                 
-                return result.stdout
+                return self.return_array
                 
         except Exception as e:
             logger.error(f"Exception during execution of '{self.component_name}': {str(e)}")
@@ -188,6 +190,7 @@ class MPICallable(Callable):
         self.component_name = workflow_component.name
         self.nnodes = workflow_component.nnodes
         self.ppn = workflow_component.ppn
+        self.return_array = np.empty(workflow_component.return_dim) if len(workflow_component.return_dim) != 0 else None
         
         # Handle executable serialization
         if not isinstance(workflow_component.executable, str):
@@ -265,7 +268,7 @@ class MPICallable(Callable):
             except Exception as e:
                 logger.error(f"Failed to deallocate resources for '{self.component_name}': {e}")
         
-        return result.stdout
+        return self.return_array
 
     def __repr__(self):
         return f"MPICallable(component='{self.component_name}', nodes={self.nnodes}, ppn={self.ppn}, type='{self.executable_type}')"

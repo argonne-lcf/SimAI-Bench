@@ -47,55 +47,6 @@ class Workflow:
         self.orchestrator_config = orchestrator_config
         self.sys_config = system_config
 
-    def register_component(self, name: str, 
-                          executable: Union[str, Callable], 
-                          type: str,
-                          args: Dict[str, Any] = None,
-                          nodes: List[str] = None,
-                          nnodes: int = 1,
-                          ppn: int = 1,
-                          num_gpus_per_process: int = 0,
-                          cpu_affinity: List[int] = None,
-                          gpu_affinity: List[str] = None, 
-                          env_vars: Dict[str, str] = None,
-                          dependencies: List[str] = None) -> 'Workflow':
-        """
-        Register a component in the workflow.
-        
-        Args:
-            name: Unique name for this component
-            executable: Command string or Python function to execute
-            type: Component type ("local", "remote", "dragon")
-            args: Arguments dictionary for the component
-            nodes: List of nodes to run on (optional)
-            ppn: Processes per node (optional)
-            num_gpus_per_process: Number of GPUs per process (optional)
-            cpu_affinity: CPU cores to bind to (optional)
-            gpu_affinity: GPU devices to bind to (optional)
-            env_vars: Environment variables (optional)
-            dependencies: List of component names this depends on (optional)
-            
-        Returns:
-            Self for method chaining
-        """
-        component = WorkflowComponent(
-            name=name,
-            type=type,
-            executable=executable,
-            args=args or {},
-            nodes=nodes or [],
-            nnodes=nnodes,
-            ppn=ppn,
-            num_gpus_per_process=num_gpus_per_process,
-            cpu_affinity=cpu_affinity,
-            gpu_affinity=gpu_affinity,
-            env_vars=env_vars or {},
-            dependencies=dependencies or []
-        )
-        
-        self.components[name] = component
-        return self
-
     def get_component(self, name: str) -> Optional[WorkflowComponent]:
         """Get a registered component by name."""
         return self.components.get(name)
@@ -104,79 +55,37 @@ class Workflow:
         """List all registered component names."""
         return list(self.components.keys())
 
-    def component(self, func: Callable = None, *, 
-                 name: str = None,
-                 type: str = "local",
-                 args: Dict[str, Any] = None,
-                 nodes: List[str] = None,
-                 nnodes: int = 1,
-                 ppn: int = 1,
-                 num_gpus_per_process: int = 0,
-                 cpu_affinity: List[int] = None,
-                 gpu_affinity: List[str] = None, 
-                 env_vars: Dict[str, str] = None,
-                 dependencies: List[str] = None):
+    def component(self, func: Callable = None, **kwargs):
         """
         Decorator to register a component in the workflow.
         
-        Can be used with or without parentheses:
-        - @workflow.component
-        - @workflow.component()
-        - @workflow.component(name="my_task", dependencies=["setup"])
-        
         Args:
             func: Function to register (when used without parentheses)
-            name: Unique name for this component (defaults to function name)
-            type: Component type ("local", "remote", "dragon")
-            args: Arguments dictionary for the component
-            nodes: List of nodes to run on (optional)
-            ppn: Processes per node (optional)
-            num_gpus_per_process: Number of GPUs per process (optional)
-            cpu_affinity: CPU cores to bind to (optional)
-            gpu_affinity: GPU devices to bind to (optional)
-            env_vars: Environment variables (optional)
-            dependencies: List of component names this depends on (optional)
-            
-        Returns:
-            Decorated function or decorator function
-            
-        Examples:
-            @workflow.component
-            def my_function():
-                return 0
-                
-            @workflow.component()
-            def another_function():
-                return 0
-                
-            @workflow.component(name="my_task", args={"--input": "file.txt"}, dependencies=["setup"])
-            def third_function():
-                return 0
+            **kwargs: All WorkflowComponent parameters (name, type, args, nodes, etc.)
         """
         def decorator(f: Callable):
-            component_name = name if name is not None else f.__name__
-            self.register_component(
-                name=component_name,
-                type=type,
-                executable=f,
-                args=args,
-                nodes=nodes,
-                nnodes=nnodes,
-                ppn=ppn,
-                num_gpus_per_process=num_gpus_per_process,
-                cpu_affinity=cpu_affinity,
-                gpu_affinity=gpu_affinity,
-                env_vars=env_vars,
-                dependencies=dependencies
-            )
+            # Use function name as default if name not provided
+            component_kwargs = kwargs.copy()
+            if 'name' not in component_kwargs:
+                component_kwargs['name'] = f.__name__
+            
+            # Set the executable to the function
+            component_kwargs['executable'] = f
+            
+            # Create component with all kwargs
+            component = WorkflowComponent(**component_kwargs)
+            self.components[component.name] = component
             return f
         
-        # If func is provided, this was called without parentheses: @workflow.component
         if func is not None:
             return decorator(func)
-        
-        # Otherwise, this was called with parentheses: @workflow.component() or @workflow.component(args)
         return decorator
+    
+    def register_component(self, **kwargs) -> 'Workflow':
+        """Register a component with keyword arguments."""
+        component = WorkflowComponent(**kwargs)
+        self.components[component.name] = component
+        return self
     
     def launch(self, **kwargs) -> Future:
         """
