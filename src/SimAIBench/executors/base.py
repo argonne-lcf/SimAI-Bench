@@ -7,21 +7,26 @@ logger = logging.getLogger(__name__)
 
 
 class BaseExecutor(ABC):
-    def __init__(self, dag: DAG):
-        self._dag = dag
-        if not is_directed_acyclic_graph(dag.graph):
-            logger.error("Graph is not acyclic!")
-            raise ValueError("Graph is no acyclic")
+    # def __init__(self):
+        # self._dag = dag
+        # if not is_directed_acyclic_graph(dag.graph):
+        #     logger.error("Graph is not acyclic!")
+        #     raise ValueError("Graph is no acyclic")
 
     def __enter__(self):
         return self
     
+    # @abstractmethod
+    # def transform_dag(self, *args, **kwargs):
+    #     """Method that takes in the SimAI-Bench dag representation and converts it to specific framework"""
+    #     pass
+
     @abstractmethod
-    def _transform_dag(self, *args, **kwargs):
-        """Method that takes in the SimAI-Bench dag representation and converts it to specific framework"""
+    def submit(self, *args, **kwargs):
+        """submits a callable for execution"""
         pass
 
     @abstractmethod
-    def run(self, *args, **kwargs):
-        """runs the dag"""
+    def cleanup(self,*args,**kwargs):
+        """Cleans up the resources"""
         pass

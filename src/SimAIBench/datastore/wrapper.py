@@ -40,9 +40,6 @@ class DataStore:
     """
     DataStore wrapper class that automatically delegates to the appropriate backend.
     
-    This class maintains the original API while internally routing operations to
-    backend-specific implementations based on the server configuration.
-    
     Args:
         name: Name of the DataStore instance
         server_info: Server information (serialized string or dict)

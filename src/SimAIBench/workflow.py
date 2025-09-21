@@ -6,12 +6,13 @@ import argparse
 import json
 from typing import Dict, List, Optional, Union, Callable, Any
 from dataclasses import dataclass, field
-from SimAIBench.orchestrator import Orchestrator
+from SimAIBench.orchestrator import Orchestrator, OrchetratorClient 
 import networkx as nx
 from typing import Union, List, Dict, Any
 from SimAIBench.component import WorkflowComponent
 from concurrent.futures import Future
 from SimAIBench.config import OchestratorConfig, SystemConfig
+from concurrent.futures import ThreadPoolExecutor
 
 
 class Workflow:
@@ -46,6 +47,8 @@ class Workflow:
         self.orchestrator = None
         self.orchestrator_config = orchestrator_config
         self.sys_config = system_config
+        self.orchestrator = Orchestrator(sys_info=self.sys_config, config=self.orchestrator_config)
+        self.client = None
 
     def get_component(self, name: str) -> Optional[WorkflowComponent]:
         """Get a registered component by name."""
@@ -98,10 +101,28 @@ class Workflow:
         Returns:
             0 for success, 1 for failure
         """
-        if not self.components:
-            print("No components registered in workflow")
-            return 0
-            
-        self.orchestrator = Orchestrator(self.components, sys_info=self.sys_config, config=self.orchestrator_config)
-        future = self.orchestrator.launch()
+        self.client = self.orchestrator.start()
+        self.client.build_dag(self.components)
+        self.orchestrator.wait()
+        self.orchestrator.stop()
+        return
+    
+    def launch_async(self, **kwargs) -> Future:
+        """
+        Asynchronously execute the complete workflow by launching all registered components
+        in dependency order.
+
+        Args:
+            **kwargs: Additional arguments passed to component handlers
+
+        Returns:
+            Future object representing the workflow execution
+        """
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(self.orchestrator.launch)
         return future
+    
+    def get_client(self):
+        """Function to return the orchestrator client"""
+        return self.client
+        

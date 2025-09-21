@@ -12,7 +12,16 @@ class SystemConfig(BaseModel):
 
 
 class OchestratorConfig(BaseModel):
+    """
+    Configuration for the Orchestrator.
+    Attributes:
+        name (str): The name of the executor. Defaults to "process-pool".
+        submit_loop_sleep_time (int): Time in seconds for the orchestrator to sleep between submission loops. Defaults to 10.
+        listening_time (int): Time in seconds for the orchestrator to listen for incoming tasks or events. Defaults to 300.
+    """
     name: str = "process-pool"
+    submit_loop_sleep_time: int = 10
+    listening_time: int = 300
 
 class ServerConfig(BaseModel):
     type: str

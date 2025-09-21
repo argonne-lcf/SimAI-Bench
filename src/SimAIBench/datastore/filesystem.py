@@ -6,7 +6,7 @@ Supports both regular filesystem and node-local temporary storage.
 """
 
 import os
-import pickle
+import cloudpickle
 import tempfile
 import zlib
 import time
@@ -79,7 +79,7 @@ class DataStoreFilesystem(BaseDataStore):
         filename = os.path.join(shard_dir, f"{key}.pickle")
         
         with tempfile.NamedTemporaryFile(delete=False, dir=shard_dir) as temp_file:
-            pickle.dump(data, temp_file)
+            cloudpickle.dump(data, temp_file)
             temp_filename = temp_file.name
         os.replace(temp_filename, filename)
         
@@ -103,7 +103,7 @@ class DataStoreFilesystem(BaseDataStore):
             time.sleep(0.1)
             
         with open(filename, "rb") as f:
-            data = pickle.load(f)
+            data = cloudpickle.load(f)
             if self.logger:
                 self.logger.debug(f"Read data for {key} from {filename}")
             return data
@@ -150,7 +150,7 @@ class DataStoreFilesystem(BaseDataStore):
         for target in targets:
             filename = os.path.join(dirname, f"{self.name}_{target.name}_data.pickle")
             with open(filename, "wb") as f:
-                pickle.dump(data, f)
+                cloudpickle.dump(data, f)
             if self.logger:
                 self.logger.debug(f"Sent data to {target.name} via {filename}")
 
@@ -173,7 +173,7 @@ class DataStoreFilesystem(BaseDataStore):
                 continue
                     
             with open(filename, "rb") as f:
-                data[sender.name] = pickle.load(f)
+                data[sender.name] = cloudpickle.load(f)
                 
         return data
     
