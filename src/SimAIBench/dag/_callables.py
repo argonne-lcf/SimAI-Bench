@@ -4,10 +4,13 @@ import logging
 import subprocess
 import base64
 import cloudpickle
-from SimAIBench.resources import ClusterResource, JobResource, NodeResourceCount
+from SimAIBench.resources import ClusterResource, JobResource, NodeResourceCount, NodeResourceList
 import time
 from functools import partial
 import numpy as np
+from ._utils import *
+import os
+import stat
 
 # Create logger name as module-level constant (serializable)
 LOGGER_NAME = __name__
@@ -190,7 +193,12 @@ class MPICallable(Callable):
         self.component_name = workflow_component.name
         self.nnodes = workflow_component.nnodes
         self.ppn = workflow_component.ppn
+        self.num_gpus_per_process = workflow_component.num_gpus_per_process
         self.return_array = np.empty(workflow_component.return_dim) if len(workflow_component.return_dim) != 0 else None
+        self.tmp_dir = os.path.join(os.getcwd(),".callable_tmp")
+        self.gpu_selector = os.environ.get("SIMAIBENCH_GPUSELECTOR","ZE_AFFINITY_MASK")
+        self.env = os.environ
+        os.makedirs(self.tmp_dir,exist_ok=True)
         
         # Handle executable serialization
         if not isinstance(workflow_component.executable, str):
@@ -221,6 +229,55 @@ class MPICallable(Callable):
         else:
             self.cmd = workflow_component.executable
             self.executable_type = 'string'
+    
+    def _buildcmd(self, job_resource: JobResource):
+        """Function to build the mpi cmd from the job resources"""
+        logger = logging.getLogger(LOGGER_NAME)
+        env = {}
+        launcher_cmd = ""
+        common_cpus = set.intersection(*[set(node_resource.cpus) for node_resource in job_resource.resources])
+        use_common_cpus = common_cpus == set(job_resource.resources[0].cpus)
+        if use_common_cpus:
+            cores = ":".join(map(str, job_resource.resources[0].cpus))
+            launcher_cmd += f"--cpu-bind list:{cores} "
+        else:
+            ##TODO: implement host file option
+            logger.warning(f"Can't use same CPUs on all the nodes. Over subscribing cores")
+            cores = ":".join(map(str, job_resource.resources[0].cpus))
+            launcher_cmd += f"--cpu-bind list:{cores} "
+        
+        ##defaults to Aurora (Level zero)
+        logger.info(f"Using {self.gpu_selector} for pinning GPUs")
+        common_gpus = set.intersection(*[set(node_resource.gpus) for node_resource in job_resource.resources])
+        use_common_gpus = common_gpus == set(job_resource.resources[0].gpus)
+        if use_common_gpus:
+            if self.nnodes == 1 and self.ppn == 1:
+                env.update({"ZE_AFFINITY_MASK": ",".join([str(i) for i in job_resource.resources[0].gpus])})
+            else:
+                bash_script = gen_affinity_bash_script_1(self.num_gpus_per_process,self.gpu_selector)
+                fname = os.path.join(self.tmp_dir,f"gpu_affinity_file_{self.component_name}.sh")
+                if not os.path.exists(fname):
+                    with open(fname, "w") as f:
+                        f.write(bash_script)
+                    st = os.stat(fname)
+                    os.chmod(fname,st.st_mode | stat.S_IEXEC)
+                launcher_cmd += f"{fname} "
+                ##set environment variables
+                env.update({"AVAILABLE_GPUS": ",".join([str(i) for i in job_resource.resources[0].gpus])})
+        else:
+            bash_script = gen_affinity_bash_script_2(self.num_gpus_per_process,self.gpu_selector)
+            fname = os.path.join(self.tmp_dir,f"gpu_affinity_file_{self.component_name}.sh")
+            if not os.path.exists(fname):
+                with open(fname, "w") as f:
+                    f.write(bash_script)
+                st = os.stat(fname)
+                os.chmod(fname,st.st_mode | stat.S_IEXEC)
+            launcher_cmd += f"{fname} "
+            ##Here you need to set the environment variables for each node
+            for nid,node in enumerate(job_resource.nodes):
+                env.update({f"AVAILABLE_GPUS_{node}": ",".join([str(i) for i in job_resource.resources[nid].gpus])})
+
+        return launcher_cmd, env
 
     def __call__(self, cluster_resource: ClusterResource, *results):
         # Create fresh logger in worker process
@@ -236,18 +293,21 @@ class MPICallable(Callable):
         logger.debug(f"Using job resource with nodes: {job_resource.nodes} cpus: {job_resource.resources[0].cpus} gpus:{job_resource.resources[0].gpus}")
         logger.debug(f"Executable type: {self.executable_type}")
         
+        laucher_opts,env = self._buildcmd(job_resource)
+
         try:
             # Construct MPI command
             nodes_str = ",".join(job_resource.nodes)
-            # full_cmd = f"mpirun -np {self.ppn * self.nnodes} -ppn {self.ppn} --hosts {nodes_str} {self.cmd}"
-            full_cmd = f"mpirun -np {self.ppn * self.nnodes} {self.cmd}"
+            if self.nnodes > 1:
+                full_cmd = f"mpirun -np {self.ppn * self.nnodes} -ppn {self.ppn} --hosts {nodes_str} {laucher_opts} {self.cmd}"
+            else:
+                full_cmd = f"mpirun -np {self.ppn * self.nnodes} {laucher_opts} {self.cmd}"
             
             logger.info(f"Executing MPI command for '{self.component_name}'")
             logger.debug(f"Full commad: {full_cmd}")
-
             
             # Execute MPI command
-            result = subprocess.run(full_cmd, shell=True, capture_output=True, text=True)
+            result = subprocess.run(full_cmd, shell=True, capture_output=True, text=True, env=self.env.update(env))
             
             logger.info(f"MPI execution completed for '{self.component_name}' with return code: {result.returncode}")
             
@@ -272,4 +332,26 @@ class MPICallable(Callable):
 
     def __repr__(self):
         return f"MPICallable(component='{self.component_name}', nodes={self.nnodes}, ppn={self.ppn}, type='{self.executable_type}')"
+    
+if __name__ == "__main__":
+    ##all cpus same
+    job_resource = JobResource(resources=[NodeResourceList(cpus=(1,2,3,4),gpus=(1,2,3,4))],nodes=["node1"])
+    callmpi = MPICallable(WorkflowComponent("hello",executable=lambda x: x**2, type="local",ppn=4,num_gpus_per_process=1))
+    opts,env = callmpi._buildcmd(job_resource)
+    print(opts,env)
 
+    ##
+    job_resource = JobResource(resources=[NodeResourceList(cpus=(1,2,3,4),gpus=(1,2,3,4)),
+                                          NodeResourceList(cpus=(1,2,3,4),gpus=(1,2,3,4))],nodes=["node1",
+                                                                                                  "node2"])
+    callmpi = MPICallable(WorkflowComponent("hello_1",executable=lambda x: x**2, type="local",ppn=4,nnodes=2,num_gpus_per_process=1))
+    opts,env = callmpi._buildcmd(job_resource)
+    print(opts,env)
+
+    ##
+    job_resource = JobResource(resources=[NodeResourceList(cpus=(1,2,3,4),gpus=(1,2,3,4)),
+                                          NodeResourceList(cpus=(1,2,3,4),gpus=(5,6,7,8))],nodes=["node1",
+                                                                                                  "node2"])
+    callmpi = MPICallable(WorkflowComponent("hello_2",executable=lambda x: x**2, type="local",ppn=4,nnodes=2,num_gpus_per_process=1))
+    opts,env = callmpi._buildcmd(job_resource)
+    print(opts,env)

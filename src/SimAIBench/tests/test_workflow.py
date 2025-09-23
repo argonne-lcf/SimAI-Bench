@@ -14,7 +14,7 @@ def test_static_workflow():
     server_info = server.get_server_info()
 
     ##create a workflow
-    my_workflow = Workflow(orchestrator_config=OchestratorConfig(name="process-pool"),
+    my_workflow = Workflow(orchestrator_config=OchestratorConfig(name="thread-pool"),
                            system_config=SystemConfig(name="local",ncpus=12,ngpus=0))
     ##register components
     @my_workflow.component(name="sim",type="remote",args={"runcount": 100, "server_info": server_info}, return_dim=[32,32,32])
