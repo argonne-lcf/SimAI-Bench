@@ -31,16 +31,12 @@ class TapsExecutor(BaseExecutor):
     """
     A stateless interface class to execute my explicit DAG using taps engine.
     """
-
     def __init__(self, config: OchestratorConfig):
         if not TAPS_AVAILABLE:
             logger.error("TAPS is not installed - cannot create TapsExecutor")
             raise ImportError('TAPS is not installed. Please install it to use TapsExecutor.')
         
         logger.info("Initializing TapsExecutor")
-        # super().__init__(dag)
-        # Using a simple ThreadPoolExecutor from taps for local execution.
-        # This can be made configurable later.
         available_executors: Dict = get_executor_configs()
         try:
             self.executor_config = available_executors[config.name]()
@@ -50,22 +46,6 @@ class TapsExecutor(BaseExecutor):
         self.engine = Engine(self.executor_config.get_executor())
         self.futures: Dict[str, TaskFuture] = {}
         logger.info("TapsExecutor initialized successfully")
-    
-    # def transform_dag(self, dag: DAG):
-    #     """Transforms the node['callable'] into a taps task"""
-    #     logger.info("Transforming DAG nodes into TAPS tasks")
-    #     graph: DiGraph = dag.graph
-    #     node_count = 0
-    #     for node, c in graph.nodes(data="callable"):
-    #         logger.debug(f"Transforming node: {node}")
-    #         graph.nodes[node]["task"] = task(c)
-    #         node_count += 1
-    #     logger.info(f"Successfully transformed {node_count} nodes into TAPS tasks")
-    #     return dag
-    
-    # def transform_node(self, dag: DAG, node: Any):
-    #     dag.graph.nodes[node]["task"] = task(dag.graph.nodes[node]["callable"])
-    #     return dag
 
     def submit(self, f: Any, args: Sequence) -> Future:
         """
