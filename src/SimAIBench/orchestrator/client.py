@@ -5,7 +5,7 @@ from SimAIBench.resources import *
 from SimAIBench.dag import DagFuture, DagStore
 from typing import Dict
 from SimAIBench.dag import DAG
-
+import copy
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class OrchetratorClient:
     """This is the client of Orchestrator server. This will enable any task to modify the orchestrator DAG"""
     def __init__(self,orchestrator: 'Orchestrator'):
-        self.dagstore: DagStore = orchestrator.dagstore
+        self.dagstore: DagStore = orchestrator.dagstore.copy()
 
     def submit(self,wokflow_component:WorkflowComponent):
         """the client simply updates the dag"""

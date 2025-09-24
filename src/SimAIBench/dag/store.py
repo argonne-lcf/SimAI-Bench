@@ -6,17 +6,19 @@ import networkx as nx
 from .dag import DAG, NodeStatus
 import time
 import logging
+import copy
 
 logger = logging.getLogger(__name__)
 
 class DagStore:
-    def __init__(self,config:ServerConfig):
+    def __init__(self,config:ServerConfig, start_store:bool = True):
         self._server_config = config
         self._store_started = False
         self.server_info = None
         self.client = None
         ##start the store at the first instantiation
-        self._start_store()
+        if start_store:
+            self._start_store()
         
     def _start_store(self):
         manager = ServerManager("dagstore_server",self._server_config)
@@ -60,3 +62,10 @@ class DagStore:
                 dag = DAG({workflow_component.name:workflow_component})
             self.client.stage_write("dag",dag)
             self.client.stage_write("last_updated",time.time())
+    
+    def copy(self):
+        dagstore = DagStore(copy.deepcopy(self._server_config),start_store=False)
+        dagstore._store_started = self._store_started
+        dagstore.server_info = self.server_info
+        logger.info(f"Created a copy of dagstore")
+        return dagstore

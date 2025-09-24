@@ -18,6 +18,7 @@ from networkx import topological_sort, DiGraph
 from pydantic import BaseModel
 from typing import Literal
 from .client import OrchetratorClient
+from SimAIBench.profiling import DagStoreProfiler, CallableProfiler
 
 from SimAIBench.config import SystemConfig, OchestratorConfig
 
@@ -51,6 +52,8 @@ class Orchestrator:
         self.dag = None
         ##start the dagstore and put the dag in it
         self.dagstore = DagStore(config=server_registry.create_config(type="filesystem"))
+        if self.config.profile:
+            self.dagstore = DagStoreProfiler(self.dagstore)
         self.executor = None
         self.dag_futures: Dict[str, DagFuture] = {}
     
@@ -97,7 +100,10 @@ class Orchestrator:
                                     args.append(futures[predecessor])
                             else:
                                 self.logger.debug(f"Node {node} has no dependencies")
-                            futures[node] = self.executor.submit(node_obj["callable"],args)
+                            if self.config.profile:
+                                futures[node] = self.executor.submit(CallableProfiler(node_obj["callable"]),args)
+                            else:
+                                futures[node] = self.executor.submit(node_obj["callable"],args)
                             dag_futures[node] = DagFuture(self.dagstore,node)
                             node_obj["status"] = next(node_obj["status"])
                             counter += 1

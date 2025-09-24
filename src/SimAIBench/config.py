@@ -22,6 +22,7 @@ class OchestratorConfig(BaseModel):
     name: str = "process-pool"
     submit_loop_sleep_time: int = 10
     listening_time: int = 300
+    profile: bool = False
 
 class ServerConfig(BaseModel):
     type: str

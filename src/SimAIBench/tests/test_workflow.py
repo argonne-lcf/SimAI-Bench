@@ -81,7 +81,7 @@ def test_dynamic_workflow():
     server_info = server.get_server_info()
 
     #create necessary configs
-    orchestrator_config=OchestratorConfig(name="process-pool")
+    orchestrator_config=OchestratorConfig(name="process-pool", profile=True)
     system_config=SystemConfig(name="local",ncpus=12,ngpus=0)
     
     orchestrator = Orchestrator(system_config,orchestrator_config)
