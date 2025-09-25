@@ -200,4 +200,8 @@ class Orchestrator:
                 (timeout is not None and time.time() > start + timeout):
                 break
 
+    def get_profile_store(self):
+        if self.config.profile:
+            return self.profiler_server_info
+        return None
 

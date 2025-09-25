@@ -11,6 +11,7 @@ try:
 except ModuleNotFoundError as e:
     pass
 from SimAIBench.datastore import DataStore
+from SimAIBench.profiling import DataStoreProfiler
 import time
 import socket
 import sys
@@ -103,7 +104,7 @@ def train(model, dataloader, criterion, optimizer, device, num_epochs=10,ddp=Fal
             epoch_loss = running_loss / len(dataloader.dataset)
 
 
-class AI(DataStore):
+class AI:
     def __init__(self,
                  name = "AI", 
                  server_info:dict = {"type":"filesystem"},
@@ -126,7 +127,9 @@ class AI(DataStore):
                 logging=False,
                 log_level=logging_.INFO,
                 **kwargs):
-        super().__init__(name,server_info=server_info,logging=logging,log_level=log_level, is_colocated=kwargs.get("is_colocated", False))
+        self._datastore = DataStore(name,server_info=server_info,logging=logging,log_level=log_level, is_colocated=kwargs.get("is_colocated", False))
+        if kwargs.get("profile_store",False) and kwargs.get("profile_server_info",None):
+            self._datastore = DataStoreProfiler(self._datastore,kwargs["profile_server_info"])
         self.name = name
         self.model_type = model_type
         self.loss_type = loss_type
@@ -325,7 +328,14 @@ class AI(DataStore):
                 if self.logger:
                     self.logger.debug(f"Elapsed time {elapsed_time} run count {current_runcount}")
             return elapsed_time, current_runcount
-
+        
+    ##function for backward compatibility
+    def stage_read(self,*args,**kwargs):
+        return self._datastore.stage_read(*args,**kwargs)
+    
+    ##function for backward compatibility
+    def stage_write(self,*args,**kwargs):
+        return self._datastore.stage_write(*args,**kwargs)
 
 
 # def set_model_params_from_train_time(self,target_time:float):
