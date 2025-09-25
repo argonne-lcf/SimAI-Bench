@@ -3,6 +3,7 @@ from SimAIBench.orchestrator import Orchestrator
 from SimAIBench import Simulation
 from SimAIBench.config import SystemConfig, OchestratorConfig, server_registry, ServerConfig
 from SimAIBench.component import WorkflowComponent
+from SimAIBench.profiling import Timer
 
 
 #A simple simulation
@@ -50,7 +51,9 @@ def test_profiler():
 
 
 if __name__ == "__main__":
-    test_profiler()
+    with Timer("test") as timer:
+        test_profiler()
+    print(f"Total execution time {timer.get_duration()}")
 
 
     
