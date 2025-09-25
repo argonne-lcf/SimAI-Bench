@@ -6,7 +6,7 @@ Complete Workflow Examples:
 1. Filesystem-based Workflow:
 ```python
 # Server side
-server_config = {"type": "filesystem", "server-address": "./data", "nshards": 32}
+server_config = {"type": "filesystem", "server_address": "./data", "nshards": 32}
 server = ServerManager("fs_server", server_config)
 server.start_server()
 
@@ -26,7 +26,7 @@ data = datastore.stage_read("results")
 # Server side
 server_config = {
     "type": "redis",
-    "server-address": "localhost:6379",
+    "server_address": "localhost:6379",
     "redis-server-exe": "/usr/bin/redis-server"
 }
 server = ServerManager("redis_server", server_config)
@@ -52,7 +52,7 @@ ServerManager.create_redis_cluster(server_addresses)
 server_config = {
     "type": "redis",
     "is_clustered": True,
-    "server-address": "node1:6379,node2:6379,node3:6379",
+    "server_address": "node1:6379,node2:6379,node3:6379",
     "redis-server-exe": "/usr/bin/redis-server"
 }
 server = ServerManager("redis_cluster", server_config)
@@ -67,7 +67,7 @@ datastore = DataStore("worker1", server.get_server_info())
 # Server side
 server_config = {
     "type": "dragon",
-    "server-address": "node1:7777,node2:7777",
+    "server_address": "node1:7777,node2:7777",
     "server-options": {"n_nodes": 2, "wait_for_keys": True}
 }
 server = ServerManager("dragon_server", server_config)
@@ -87,7 +87,7 @@ datastore = DataStore("worker1", serialized)
 server_config = {
     "type": "daos",                     # new option
     "mode": "posix",                    # posix uses a dfuse mount path
-    "server-address": "/path/to/dfuse/mount",  # dfuse mount directory
+    "server_address": "/path/to/dfuse/mount",  # dfuse mount directory
     "nshards": 64
 }
 server = ServerManager("daos_posix_server", server_config)
@@ -217,17 +217,17 @@ class ServerManager:
             self.logger.info(f"Setting up {self.config['type']} server on {self.config.get('server-address', 'unknown')}")
         
         if self.config["type"] == "filesystem":
-            if "server-address" not in self.config:
-                self.config["server-address"] = os.path.join(os.getcwd(), ".tmp")
+            if "server_address" not in self.config:
+                self.config["server_address"] = os.path.join(os.getcwd(), ".tmp")
             if "nshards" not in self.config:
                 self.config["nshards"] = 64
-            dirname = self.config["server-address"]
+            dirname = self.config["server_address"]
             os.makedirs(dirname, exist_ok=True)
             if self.logger:
                 self.logger.info(f"Created filesystem directory at {dirname}")
         
         elif self.config["type"] == "node-local":
-            self.config["server-address"] = "/tmp"
+            self.config["server_address"] = "/tmp"
             if "nshards" not in self.config:
                 self.config["nshards"] = 64
             if self.logger:
@@ -236,7 +236,7 @@ class ServerManager:
         elif self.config["type"] == "redis":
             if "redis-server-exe" not in self.config:
                 raise ValueError("redis-server-exe must be specified for Redis server")
-            if "server-address" not in self.config:
+            if "server_address" not in self.config:
                 raise ValueError("Server address is required")
             self.redis_processes = self._start_redis_server()
         
@@ -265,11 +265,11 @@ class ServerManager:
             if mode not in ("posix", "kv"):
                 raise ValueError("DAOS mode must be one of {'posix','kv'}")
             if mode == "posix":
-                if "server-address" not in self.config:
+                if "server_address" not in self.config:
                     raise ValueError("For DAOS POSIX mode, 'server-address' must point to a dfuse mount path")
                 if "nshards" not in self.config:
                     self.config["nshards"] = 64
-                dirname = self.config["server-address"]
+                dirname = self.config["server_address"]
                 os.makedirs(dirname, exist_ok=True)
                 if self.logger:
                     self.logger.info(f"Using DAOS-POSIX mount at {dirname}")
@@ -282,7 +282,7 @@ class ServerManager:
     
     def _start_redis_server(self):
         """Start Redis server processes for all addresses."""
-        addresses = self.config["server-address"].split(",")
+        addresses = self.config["server_address"].split(",")
         is_clustered = self.config.get("is_clustered", False)
         redis_processes = []
         
@@ -317,7 +317,7 @@ class ServerManager:
     
     def _start_dragon_dictionary(self):
         """Start a Dragon dictionary server."""
-        addresses = self.config["server-address"].split(",")
+        addresses = self.config["server_address"].split(",")
         is_clustered = self.config.get("is_clustered", False)
         nodes = [address.split(":")[0] for address in addresses]
         ports = [address.split(":")[1] for address in addresses]

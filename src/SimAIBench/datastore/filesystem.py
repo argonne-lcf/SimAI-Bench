@@ -55,23 +55,23 @@ class DataStoreFilesystem(BaseDataStore):
     def _setup_client(self):
         """Setup filesystem client - create directory structure."""
         if self.config["type"] == "node-local":
-            if "server-address" not in self.config or not self.config["server-address"].startswith("/tmp"):
-                self.config["server-address"] = "/tmp"
+            if "server_address" not in self.config or not self.config["server_address"].startswith("/tmp"):
+                self.config["server_address"] = "/tmp"
         elif self.config["type"] == "filesystem":
-            if "server-address" not in self.config:
-                self.config["server-address"] = os.path.join(os.getcwd(), ".tmp")
+            if "server_address" not in self.config:
+                self.config["server_address"] = os.path.join(os.getcwd(), ".tmp")
                 
         if "nshards" not in self.config:
             self.config["nshards"] = 64
             
-        dirname = self.config["server-address"]
+        dirname = self.config["server_address"]
         for shard in range(self.config["nshards"]):
             shard_dir = os.path.join(dirname, str(shard))
             os.makedirs(shard_dir, exist_ok=True)
     
     def stage_write(self, key: str, data: Any, persistant: bool = True, client_id: int = 0, is_local: bool = False):
         """Stage data as a key-value pair in filesystem."""
-        dirname = self.config["server-address"]
+        dirname = self.config["server_address"]
         h = zlib.crc32(key.encode('utf-8'))
         shard_number = h % self.config["nshards"]
         shard_dir = os.path.join(dirname, str(shard_number))
@@ -90,7 +90,7 @@ class DataStoreFilesystem(BaseDataStore):
         """Read staged data using the key from filesystem."""
         import time
         
-        dirname = self.config["server-address"]
+        dirname = self.config["server_address"]
         h = zlib.crc32(key.encode('utf-8'))
         shard_number = h % self.config["nshards"]
         shard_dir = os.path.join(dirname, str(shard_number))
@@ -110,7 +110,7 @@ class DataStoreFilesystem(BaseDataStore):
     
     def poll_staged_data(self, key: str, client_id: int = 0, is_local: bool = False) -> bool:
         """Check if data for the key is staged in filesystem."""
-        dirname = self.config["server-address"]
+        dirname = self.config["server_address"]
         h = zlib.crc32(key.encode('utf-8'))
         shard_number = h % self.config["nshards"]
         shard_dir = os.path.join(dirname, str(shard_number))
@@ -119,7 +119,7 @@ class DataStoreFilesystem(BaseDataStore):
     
     def clean_staged_data(self, key: str, client_id: int = 0, is_local: bool = False):
         """Clear the staging area for the given key from filesystem."""
-        dirname = self.config["server-address"]
+        dirname = self.config["server_address"]
         h = zlib.crc32(key.encode('utf-8'))
         shard_number = h % self.config["nshards"]
         shard_dir = os.path.join(dirname, str(shard_number))
@@ -145,7 +145,7 @@ class DataStoreFilesystem(BaseDataStore):
         if self.logger:
             self.logger.debug(f"Sending data: {data}")
         
-        dirname = self.config.get("server-address", os.path.join(os.getcwd(), ".tmp"))
+        dirname = self.config.get("server_address", os.path.join(os.getcwd(), ".tmp"))
         os.makedirs(dirname, exist_ok=True)
         for target in targets:
             filename = os.path.join(dirname, f"{self.name}_{target.name}_data.pickle")
@@ -158,7 +158,7 @@ class DataStoreFilesystem(BaseDataStore):
         """Receive data from connected senders via filesystem."""
         data = {}
         senders = senders or self.connections
-        dirname = self.config.get("server-address", os.path.join(os.getcwd(), ".tmp"))
+        dirname = self.config.get("server_address", os.path.join(os.getcwd(), ".tmp"))
         
         if not os.path.exists(dirname):
             if self.logger:
@@ -180,7 +180,7 @@ class DataStoreFilesystem(BaseDataStore):
     @contextlib.contextmanager
     def acquire_lock(self, lock_name: str, acquire_timeout: int = 100, lock_timeout: int = 300):
         """Acquire a filesystem-based lock using fcntl."""
-        dirname = self.config["server-address"]
+        dirname = self.config["server_address"]
         lock_key = f"lock:{lock_name}"
         lock_file_path = os.path.join(dirname, lock_key)
         
@@ -244,12 +244,33 @@ class DataStoreFilesystem(BaseDataStore):
         """Clean up the filesystem datastore."""
         import shutil
         
-        dirname = self.config.get("server-address", os.path.join(os.getcwd(), ".tmp"))
+        dirname = self.config.get("server_address", os.path.join(os.getcwd(), ".tmp"))
         if os.path.exists(dirname):
             shutil.rmtree(dirname)
             if self.logger:
                 self.logger.info(f"Removed directory {dirname}")
 
+    def keys(self):
+        tmp_dir = self.config["server_address"]
+        keys = []
+        for shard in range(self.config["nshards"]):
+            shard_dir = os.path.join(tmp_dir, str(shard))
+            if os.path.exists(shard_dir):
+                for file in os.listdir(shard_dir):
+                    if file.endswith('.pickle'):
+                        key = file[:-7]  # Remove '.pickle' extension
+                        keys.append(key)
+        return keys
+    
+    def dump(self):
+        import json
+        keys = self.keys()
+        data = {}
+        for key in keys:
+            data[key] = self.stage_read(key)
+        fname = os.path.join(os.getcwd(),self.name+".json")
+        with open(fname,"w") as f:
+            json.dump(data,f,indent=4)
 
 class ServerManagerFilesystem(BaseServerManager):
     """

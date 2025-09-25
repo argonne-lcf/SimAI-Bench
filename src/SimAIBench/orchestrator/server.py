@@ -1,5 +1,6 @@
 import subprocess
 import time
+import os
 import multiprocessing as mp
 from multiprocessing import Queue
 import logging
@@ -20,7 +21,8 @@ from typing import Literal
 from .client import OrchetratorClient
 from SimAIBench.profiling import DagStoreProfiler, CallableProfiler
 
-from SimAIBench.config import SystemConfig, OchestratorConfig
+from SimAIBench.config import SystemConfig, OchestratorConfig, server_registry
+from SimAIBench.datastore import DataStore, ServerManager
 
 # Configure logging
 logging.basicConfig(
@@ -51,9 +53,17 @@ class Orchestrator:
         #create DAG
         self.dag = None
         ##start the dagstore and put the dag in it
-        self.dagstore = DagStore(config=server_registry.create_config(type="filesystem"))
+        tmp_dir = os.environ.get("SIMAIBENCH_DAGSTORE_DIR",
+                                 os.path.join(os.getcwd(), "./.dagstore_tmp"))
+        self.dagstore = DagStore(config=server_registry.create_config(type="filesystem",server_address=tmp_dir))
         if self.config.profile:
-            self.dagstore = DagStoreProfiler(self.dagstore)
+            tmp_dir = os.environ.get("SIMAIBENCH_PROFILER_TMPDIR",
+                                 os.path.join(os.getcwd(), "./.profiler_tmp"))
+            self.profiler_server = ServerManager("profiler_server",config=server_registry.create_config("filesystem",server_address=tmp_dir))
+            self.profiler_server.start_server()
+            self.profiler_server_info = self.profiler_server.get_server_info()
+            self.profiler_store = DataStore("profiler_store",self.profiler_server_info)
+            self.dagstore = DagStoreProfiler(self.dagstore,self.profiler_server_info)
         self.executor = None
         self.dag_futures: Dict[str, DagFuture] = {}
     
@@ -101,7 +111,8 @@ class Orchestrator:
                             else:
                                 self.logger.debug(f"Node {node} has no dependencies")
                             if self.config.profile:
-                                futures[node] = self.executor.submit(CallableProfiler(node_obj["callable"]),args)
+                                futures[node] = self.executor.submit(CallableProfiler(node_obj["callable"],self.profiler_server_info),
+                                                                     args)
                             else:
                                 futures[node] = self.executor.submit(node_obj["callable"],args)
                             dag_futures[node] = DagFuture(self.dagstore,node)
@@ -160,8 +171,13 @@ class Orchestrator:
         self._submit_thread.join(timeout=10)
         if self._submit_thread.is_alive():
             self.logger.warning("Submit thread did not stop in time.")
+        self.dagstore.cleanup()
         self.executor.cleanup()
         self.cluster_resource.cleanup()
+        if self.config.profile:
+            ##dump server-info
+            self.profiler_store.dump()
+            self.profiler_server.stop_server()
 
     def wait(self, timeout = None):
         start = time.time()

@@ -67,11 +67,11 @@ class DataStoreDaos(BaseDataStore):
             
         if mode == "posix":
             # Treat like filesystem sharded directory on a dfuse mount
-            if "server-address" not in self.config:
+            if "server_address" not in self.config:
                 raise ValueError("For DAOS POSIX mode, 'server-address' must point to a dfuse mount path")
             if "nshards" not in self.config:
                 self.config["nshards"] = 64
-            dirname = self.config["server-address"]
+            dirname = self.config["server_address"]
             for shard in range(self.config["nshards"]):
                 shard_dir = os.path.join(dirname, str(shard))
                 os.makedirs(shard_dir, exist_ok=True)
@@ -99,7 +99,7 @@ class DataStoreDaos(BaseDataStore):
         mode = self.config.get("mode", "posix")
         
         if mode == "posix":
-            dirname = self.config["server-address"]
+            dirname = self.config["server_address"]
             h = zlib.crc32(key.encode('utf-8'))
             shard_number = h % self.config["nshards"]
             shard_dir = os.path.join(dirname, str(shard_number))
@@ -126,7 +126,7 @@ class DataStoreDaos(BaseDataStore):
         mode = self.config.get("mode", "posix")
         
         if mode == "posix":
-            dirname = self.config["server-address"]
+            dirname = self.config["server_address"]
             h = zlib.crc32(key.encode('utf-8'))
             shard_number = h % self.config["nshards"]
             shard_dir = os.path.join(dirname, str(shard_number))
@@ -158,7 +158,7 @@ class DataStoreDaos(BaseDataStore):
         mode = self.config.get("mode", "posix")
         
         if mode == "posix":
-            dirname = self.config["server-address"]
+            dirname = self.config["server_address"]
             h = zlib.crc32(key.encode('utf-8'))
             shard_number = h % self.config["nshards"]
             shard_dir = os.path.join(dirname, str(shard_number))
@@ -174,7 +174,7 @@ class DataStoreDaos(BaseDataStore):
         mode = self.config.get("mode", "posix")
         
         if mode == "posix":
-            dirname = self.config["server-address"]
+            dirname = self.config["server_address"]
             h = zlib.crc32(key.encode('utf-8'))
             shard_number = h % self.config["nshards"]
             shard_dir = os.path.join(dirname, str(shard_number))
@@ -208,7 +208,7 @@ class DataStoreDaos(BaseDataStore):
         
         if mode == "posix":
             import shutil
-            dirname = self.config.get("server-address")
+            dirname = self.config.get("server_address")
             if dirname and os.path.exists(dirname):
                 shutil.rmtree(dirname)
                 if self.logger:

@@ -21,11 +21,11 @@ class DagStore:
             self._start_store()
         
     def _start_store(self):
-        manager = ServerManager("dagstore_server",self._server_config)
+        self.manager = ServerManager("dagstore_server",self._server_config)
         try:
-            manager.start_server()
+            self.manager.start_server()
             self._store_started = True
-            self.server_info = manager.get_server_info()
+            self.server_info = self.manager.get_server_info()
         except Exception as e:
             logger.error(f"Dagstore server failed to start with exception {e}")
     
@@ -69,3 +69,8 @@ class DagStore:
         dagstore.server_info = self.server_info
         logger.info(f"Created a copy of dagstore")
         return dagstore
+    
+    def cleanup(self):
+        logger.info("Cleaning up dagstore")
+        if self.manager:
+            self.manager.stop_server()

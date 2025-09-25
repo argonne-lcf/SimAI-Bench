@@ -64,7 +64,7 @@ class DataStoreRedis(BaseDataStore):
     
     def _setup_client(self):
         """Setup Redis client connection."""
-        if "server-address" not in self.config:
+        if "server_address" not in self.config:
             raise ValueError("Server address is required for Redis client")
         self.redis_client = self._create_redis_client()
     
@@ -77,7 +77,7 @@ class DataStoreRedis(BaseDataStore):
             if is_clustered:
                 hosts = []
                 ports = []
-                for address in self.config["server-address"].split(","):
+                for address in self.config["server_address"].split(","):
                     host = address.strip().split(":")[0]
                     port = int(address.strip().split(":")[1])
                     hosts.append(host)
@@ -108,7 +108,7 @@ class DataStoreRedis(BaseDataStore):
                 
             elif self.is_colocated:
                 my_hostname = socket.gethostname()
-                for address in self.config["server-address"].split(","):
+                for address in self.config["server_address"].split(","):
                     host = address.strip().split(":")[0]
                     port = int(address.strip().split(":")[1])
                     if host == my_hostname or host == "localhost" or host == "127.0.0.1":
@@ -120,7 +120,7 @@ class DataStoreRedis(BaseDataStore):
                 assert len(clients) > 0, "No colocated Redis clients created"
                 
             else:  # Non-clustered Redis server
-                for address in self.config["server-address"].split(","):
+                for address in self.config["server_address"].split(","):
                     host = address.strip().split(":")[0]
                     port = int(address.strip().split(":")[1])
                     client = redis.Redis(host=host, port=port)

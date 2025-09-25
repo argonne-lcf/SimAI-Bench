@@ -62,7 +62,7 @@ class DataStore:
         # Create the appropriate backend instance
         backend_class = DATASTORE_BACKENDS[backend_type]
         try:
-            self._backend = backend_class(name, server_info, logging, log_level, is_colocated)
+            self._backend: BaseDataStore = backend_class(name, server_info, logging, log_level, is_colocated)
         except ImportError as e:
             raise ImportError(f"Required dependencies for {backend_type} backend are not available: {e}")
         
@@ -143,6 +143,9 @@ class DataStore:
     def flush_logger(self):
         """Flush logger handlers."""
         return self._backend.flush_logger()
+    
+    def dump(self):
+        return self._backend.dump()
 
     def __repr__(self):
         return f"<DataStore name={self.name}, backend={type(self._backend).__name__}>"

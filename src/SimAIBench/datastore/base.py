@@ -116,6 +116,11 @@ class BaseDataStore(ABC):
         if self.logger:
             for handler in self.logger.handlers:
                 handler.flush()
+    
+    def dump(self):
+        if self.logger:
+            self.logger.warning("Server dump not implemented")
+        pass
 
     def __repr__(self):
         return f"<{self.__class__.__name__} name={self.name}>"

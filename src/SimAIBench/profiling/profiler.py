@@ -1,6 +1,5 @@
 from .timer import Timer
 from SimAIBench.datastore import DataStore
-
 from SimAIBench.dag import Callable, DagStore
 from typing import Dict, List, Union
 import logging
@@ -9,15 +8,20 @@ import uuid
 import json
 
 class Profiler:
+    def __init__(self,server_info: Dict):
+        self.server_info = server_info
+        self.store = DataStore(f"profiler-{str(uuid.uuid4())}",server_info=server_info)
+
     def __setstate__(self, state):
         self.__dict__.update(state)
 
 
 class DagStoreProfiler(Profiler):
-    def __init__(self, datastore: DagStore):
+    def __init__(self, datastore: DagStore, server_info: Dict):
+        super().__init__(server_info)
         self._datastore = datastore
         self.durations: Dict[str, List] = {}
-        self.throughput: Dict[str, List] = {}
+        self.id = str(uuid.uuid4())
     
     def _wrap_method(self, method_name: str):
         """Wrap a method to time its execution."""
@@ -25,11 +29,14 @@ class DagStoreProfiler(Profiler):
         def wrapped(*args, **kwargs):
             with Timer(f"{method_name}") as timer:
                 result = original_method(*args, **kwargs)
-            
+        
             try:
                 self.durations[method_name].append(timer.get_duration())
             except KeyError:
                 self.durations[method_name] = [timer.get_duration()]
+            
+            self.store.stage_write(f"dagstore-{method_name}-{self.id}-{len(self.durations[method_name])-1}",
+                                   timer.get_duration())
             
             return result
         return wrapped
@@ -72,21 +79,20 @@ class DagStoreProfiler(Profiler):
     def copy(self):
         if isinstance(self._datastore, DagStore):
             new_dag_store = self._datastore.copy()
-            return DagStoreProfiler(new_dag_store)
+            return DagStoreProfiler(new_dag_store,self.server_info)
         else:
             raise AttributeError
 
     def __repr__(self):
         return f"<DataStoreProfiler wrapping {self._datastore}>"
     
-    def __del__(self):
-        self.report()
-    
 class CallableProfiler(Profiler):
-    def __init__(self, callable: Callable):
+    def __init__(self, callable: Callable, server_info:Dict):
+        super().__init__(server_info)
         self._callable = callable
         self.durations: Dict[str: List] = {}
         self.__name__ = callable.__name__
+        self.id = str(uuid.uuid4())
 
     def __call__(self, *args, **kwargs):
         with Timer(f"{self.__name__}") as timer:
@@ -96,6 +102,9 @@ class CallableProfiler(Profiler):
             self.durations[method_name].append(timer.get_duration())
         except KeyError:
             self.durations[method_name] = [timer.get_duration()]
+        
+        self.store.stage_write(f"callable-{method_name}-{self.id}-{len(self.durations[method_name])-1}",
+                                   timer.get_duration())
         return result
     
     def report(self):

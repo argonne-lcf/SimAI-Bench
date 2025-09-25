@@ -105,27 +105,27 @@ class DataStore:
     def _setup_client(self):
         """Setup client connections based on configuration."""
         if self.config["type"] == "filesystem":
-            if "server-address" not in self.config:
-                self.config["server-address"] = os.path.join(os.getcwd(), ".tmp")
+            if "server_address" not in self.config:
+                self.config["server_address"] = os.path.join(os.getcwd(), ".tmp")
             if "nshards" not in self.config:
                 self.config["nshards"] = 64
-            dirname = self.config["server-address"]
+            dirname = self.config["server_address"]
             for shard in range(self.config["nshards"]):
                 shard_dir = os.path.join(dirname, str(shard))
                 os.makedirs(shard_dir, exist_ok=True)
 
         elif self.config["type"] == "node-local":
-            if "server-address" not in self.config or not self.config["server-address"].startswith("/tmp"):
-                self.config["server-address"] = "/tmp"
+            if "server_address" not in self.config or not self.config["server_address"].startswith("/tmp"):
+                self.config["server_address"] = "/tmp"
             if "nshards" not in self.config:
                 self.config["nshards"] = 64
-            dirname = self.config["server-address"]
+            dirname = self.config["server_address"]
             for shard in range(self.config["nshards"]):
                 shard_dir = os.path.join(dirname, str(shard))
                 os.makedirs(shard_dir, exist_ok=True)
 
         elif self.config["type"] == "redis":
-            if "server-address" not in self.config:
+            if "server_address" not in self.config:
                 raise ValueError("Server address is required for Redis client")
             self.redis_client = self._create_redis_client()
         
@@ -160,11 +160,11 @@ class DataStore:
                 raise ValueError("DAOS mode must be one of {'posix','kv'}")
             if mode == "posix":
                 # Treat like filesystem sharded directory on a dfuse mount
-                if "server-address" not in self.config:
+                if "server_address" not in self.config:
                     raise ValueError("For DAOS POSIX mode, 'server-address' must point to a dfuse mount path")
                 if "nshards" not in self.config:
                     self.config["nshards"] = 64
-                dirname = self.config["server-address"]
+                dirname = self.config["server_address"]
                 for shard in range(self.config["nshards"]):
                     shard_dir = os.path.join(dirname, str(shard))
                     os.makedirs(shard_dir, exist_ok=True)
@@ -297,7 +297,7 @@ class DataStore:
             if is_clustered:
                 hosts = []
                 ports = []
-                for address in self.config["server-address"].split(","):
+                for address in self.config["server_address"].split(","):
                     host, port_str = address.split(":")
                     port = int(port_str)
                     hosts.append(host)
@@ -333,7 +333,7 @@ class DataStore:
                 
             elif self.is_colocated:
                 my_hostname = socket.gethostname()
-                for address in self.config["server-address"].split(","):
+                for address in self.config["server_address"].split(","):
                     if my_hostname not in address:
                         if self.logger:
                             self.logger.warning(f"Skipping address {address} as it does not match hostname {my_hostname}")
@@ -349,7 +349,7 @@ class DataStore:
                 assert len(clients) > 0, "No colocated Redis clients created"
                 
             else:  # Non-clustered Redis server
-                for address in self.config["server-address"].split(","):
+                for address in self.config["server_address"].split(","):
                     host, port_str = address.split(":")
                     port = int(port_str)
                     client = redis.Redis(host=host, port=port)
@@ -386,7 +386,7 @@ class DataStore:
             self.logger.debug(f"Sending data: {data}")
         
         if self.config["type"] == "filesystem" or self.config["type"] == "node-local":
-            dirname = self.config.get("server-address", os.path.join(os.getcwd(), ".tmp"))
+            dirname = self.config.get("server_address", os.path.join(os.getcwd(), ".tmp"))
             os.makedirs(dirname, exist_ok=True)
             for target in targets:
                 filename = os.path.join(dirname, f"{self.name}_{target.name}_data.pickle")
@@ -403,7 +403,7 @@ class DataStore:
         """Receive data from connected senders."""
         data = {}
         senders = senders or self.connections
-        dirname = self.config.get("server-address", os.path.join(os.getcwd(), ".tmp"))
+        dirname = self.config.get("server_address", os.path.join(os.getcwd(), ".tmp"))
         
         if not os.path.exists(dirname):
             if self.logger:
@@ -467,7 +467,7 @@ class DataStore:
                     self.logger.error(f"Failed to stage data in Redis: {e}")
                 raise
         elif self.config["type"] == "filesystem" or self.config["type"] == "node-local":
-            dirname = self.config["server-address"]
+            dirname = self.config["server_address"]
             h = zlib.crc32(key.encode('utf-8'))
             shard_number = h % self.config["nshards"]
             shard_dir = os.path.join(dirname, str(shard_number))
@@ -482,7 +482,7 @@ class DataStore:
         elif self.config["type"] == "daos":
             mode = self.config.get("mode", "posix")
             if mode == "posix":
-                dirname = self.config["server-address"]
+                dirname = self.config["server_address"]
                 h = zlib.crc32(key.encode('utf-8'))
                 shard_number = h % self.config["nshards"]
                 shard_dir = os.path.join(dirname, str(shard_number))
@@ -544,7 +544,7 @@ class DataStore:
                     self.logger.error(f"Failed to read data from Redis: {e}")
                 raise
         elif self.config["type"] == "filesystem" or self.config["type"] == "node-local":
-            dirname = self.config["server-address"]
+            dirname = self.config["server_address"]
             h = zlib.crc32(key.encode('utf-8'))
             shard_number = h % self.config["nshards"]
             shard_dir = os.path.join(dirname, str(shard_number))
@@ -564,7 +564,7 @@ class DataStore:
         elif self.config["type"] == "daos":
             mode = self.config.get("mode", "posix")
             if mode == "posix":
-                dirname = self.config["server-address"]
+                dirname = self.config["server_address"]
                 h = zlib.crc32(key.encode('utf-8'))
                 shard_number = h % self.config["nshards"]
                 shard_dir = os.path.join(dirname, str(shard_number))
@@ -619,7 +619,7 @@ class DataStore:
                     self.logger.error(f"Failed to poll data in Redis: {e}")
                 raise
         elif self.config["type"] == "filesystem" or self.config["type"] == "node-local":
-            dirname = self.config["server-address"]
+            dirname = self.config["server_address"]
             h = zlib.crc32(key.encode('utf-8'))
             shard_number = h % self.config["nshards"]
             shard_dir = os.path.join(dirname, str(shard_number))
@@ -628,7 +628,7 @@ class DataStore:
         elif self.config["type"] == "daos":
             mode = self.config.get("mode", "posix")
             if mode == "posix":
-                dirname = self.config["server-address"]
+                dirname = self.config["server_address"]
                 h = zlib.crc32(key.encode('utf-8'))
                 shard_number = h % self.config["nshards"]
                 shard_dir = os.path.join(dirname, str(shard_number))
@@ -680,7 +680,7 @@ class DataStore:
             
         elif self.config["type"] == "filesystem" or self.config["type"] == "node-local":
             # Remove file directly
-            dirname = self.config["server-address"]
+            dirname = self.config["server_address"]
             h = zlib.crc32(key.encode('utf-8'))
             shard_number = h % self.config["nshards"]
             shard_dir = os.path.join(dirname, str(shard_number))
@@ -700,7 +700,7 @@ class DataStore:
         elif self.config["type"] == "daos":
             mode = self.config.get("mode", "posix")
             if mode == "posix":
-                dirname = self.config["server-address"]
+                dirname = self.config["server_address"]
                 h = zlib.crc32(key.encode('utf-8'))
                 shard_number = h % self.config["nshards"]
                 shard_dir = os.path.join(dirname, str(shard_number))
@@ -768,7 +768,7 @@ class DataStore:
                         redis_conn.delete(lock_key)
                         if self.logger: self.logger.debug(f"Lock released: {lock_key}")
         elif self.config["type"] == "filesystem":
-            dirname = self.config["server-address"]
+            dirname = self.config["server_address"]
             lock_key = f"lock:{lock_name}"
             lock_file_path = os.path.join(dirname, lock_key)
             
@@ -834,7 +834,7 @@ class DataStore:
     def clean(self):
         """Clean up the datastore."""
         if self.config["type"] == "filesystem" or self.config["type"] == "node-local":
-            dirname = self.config.get("server-address", os.path.join(os.getcwd(), ".tmp"))
+            dirname = self.config.get("server_address", os.path.join(os.getcwd(), ".tmp"))
             if os.path.exists(dirname):
                 shutil.rmtree(dirname)
                 if self.logger:
