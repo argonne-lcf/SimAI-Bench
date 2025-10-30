@@ -40,7 +40,7 @@ run_experiments() {
             if [ "$backend" == "dragon" ];then
                 dragon workflow.py --server_config "$config" --data_size "$size" --staging_dir "/lus/flare/projects/datascience/hari/staging/.tmp_${nnodes}_${label2}_${timestamp}"
             else
-                python3 workflow.py --server_config "$config" --data_size "$size" --staging_dir "/lus/flare/projects/datascience/hari/staging/.tmp_${nnodes}_${label2}_${timestamp}
+                python3 workflow.py --server_config "$config" --data_size "$size" --staging_dir "/lus/flare/projects/datascience/hari/staging/.tmp_${nnodes}_${label2}_${timestamp}"
             fi
             # rm -r "/lus/flare/projects/datascience/hari/staging/.tmp_${nnodes}_$label2"
         done

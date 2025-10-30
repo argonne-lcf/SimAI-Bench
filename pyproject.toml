@@ -28,7 +28,7 @@ dependencies = [
     'dragonhpc==0.12rc2',
     'SciencePlots',
     'pyitt',
-    'ensemble_launcher @ git+https://github.com/argonne-lcf/ensemble_launcher.git'
+    'ensemble_launcher @ git+https://github.com/argonne-lcf/ensemble_launcher.git@4d4f6bd2dcf367cb0011aaa24b3d518debf0913a',
 
 ]
 [project.optional-dependencies]
