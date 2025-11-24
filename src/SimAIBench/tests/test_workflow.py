@@ -32,7 +32,6 @@ def test_static_workflow():
         sim.add_kernel("MatMulSimple2D", run_count=runcount)
         sim.run()
         value = sim.stage_read("key")
-        sim.logger.info(f"Received {value} from other sim")
     
     my_workflow.launch()
     
@@ -109,5 +108,5 @@ def test_dynamic_workflow():
 
 
 if __name__ == "__main__":
-    # test_static_workflow()
-    test_dynamic_workflow()
+    test_static_workflow()
+    # test_dynamic_workflow()
