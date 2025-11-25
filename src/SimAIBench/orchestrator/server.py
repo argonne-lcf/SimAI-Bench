@@ -196,7 +196,7 @@ class Orchestrator:
                     ndone += 1
             
             time.sleep(1)
-            if (ndone >= len(self.dag_futures)) or \
+            if (len(self.dag_futures) > 0 and (ndone >= len(self.dag_futures))) or \
                 (timeout is not None and time.time() > start + timeout):
                 break
 

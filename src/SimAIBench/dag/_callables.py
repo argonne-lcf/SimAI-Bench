@@ -11,6 +11,7 @@ import numpy as np
 from ._utils import *
 import os
 import stat
+import copy
 
 # Create logger name as module-level constant (serializable)
 LOGGER_NAME = __name__
@@ -130,19 +131,33 @@ class ResourceAwareCallable(Callable):
         self.max_allocation_attempts = 1000  # Prevent infinite loops
         self.allocation_retry_delay = 0.5    # Seconds between attempts
         self.allocation_timeout = 300        # Total timeout in seconds
+        self.cpu_affinity = None
+        self.gpu_affinity = None
+        if original_workflow_component.cpu_affinity is not None and original_workflow_component.gpu_affinity is not None:
+            self.cpu_affinity = copy.deepcopy(original_workflow_component.cpu_affinity)
+            self.gpu_affinity = copy.deepcopy(original_workflow_component.gpu_affinity)
 
     def __call__(self, cluster_resource: ClusterResource, *results):
         logger = logging.getLogger(LOGGER_NAME)
         logger.info(f"Requesting resources for component '{self.__name__}'")
         logger.debug(f"Resource requirements: {self.nnodes} nodes, {self.ppn} processes per node, {self.total_gpus} GPUs per node")
         
-        # Create JobResource at execution time (not init time)
-        job_resource = JobResource(
-            resources=[
-                NodeResourceCount(ncpus=self.ppn, ngpus=self.total_gpus) 
-                for _ in range(self.nnodes)
-            ]
-        )
+        if self.cpu_affinity:
+            # Create JobResource at execution time (not init time)
+            job_resource = JobResource(
+                resources=[
+                    NodeResourceList(cpus=self.cpu_affinity, gpus=self.gpu_affinity) 
+                    for _ in range(self.nnodes)
+                ]
+            )
+        else:
+            # Create JobResource at execution time (not init time)
+            job_resource = JobResource(
+                resources=[
+                    NodeResourceCount(ncpus=self.ppn, ngpus=self.total_gpus) 
+                    for _ in range(self.nnodes)
+                ]
+            )
         
         # Try to allocate resources with timeout protection
         start_time = time.time()

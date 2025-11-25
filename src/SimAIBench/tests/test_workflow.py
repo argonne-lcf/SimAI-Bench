@@ -32,6 +32,7 @@ def test_static_workflow():
         sim.add_kernel("MatMulSimple2D", run_count=runcount)
         sim.run()
         value = sim.stage_read("key")
+        assert value == "value-hello"
     
     my_workflow.launch()
     
@@ -58,6 +59,8 @@ def test_dynamic_workflow():
             import time
             value = ds.stage_read("key")
             logger.info(f"Got {value}")
+            expected = "sim"+"".join([f"-sim{i}" for i in range(simid)])
+            assert value == expected , f"{value} != {expected}"
             ds.stage_write("key",value+f"-sim{simid}")
             time.sleep(1)
         
@@ -108,5 +111,5 @@ def test_dynamic_workflow():
 
 
 if __name__ == "__main__":
-    test_static_workflow()
-    # test_dynamic_workflow()
+    # test_static_workflow()
+    test_dynamic_workflow()

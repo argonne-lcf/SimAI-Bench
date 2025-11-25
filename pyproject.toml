@@ -27,15 +27,17 @@ dependencies = [
     'redis',
     'SciencePlots',
     'cloudpickle',
-    'ensemble_launcher @ git+https://github.com/argonne-lcf/ensemble_launcher.git'
-
+    'ensemble_launcher @ git+https://github.com/argonne-lcf/ensemble_launcher.git',
+    'taps @ git+https://github.com/proxystore/taps.git'
 ]
 [project.optional-dependencies]
 gpu = [
     "dpnp",
-    "cupy",
     'dragonhpc==0.12rc2',
     'pyitt',
+]
+cuda = [
+    "cupy"
 ]
 
 [project.urls]

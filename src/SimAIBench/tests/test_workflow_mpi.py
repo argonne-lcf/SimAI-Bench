@@ -1,14 +1,17 @@
 from SimAIBench import Workflow,Simulation, OchestratorConfig, SystemConfig
 import logging
 
+
+logging.basicConfig(filename='test.log', level=logging.DEBUG)
+
 class RC:
     def __init__(self, data:int):
         self.data = data
 
 def test_workflow():
     my_workflow = Workflow(orchestrator_config=OchestratorConfig(name="process-pool"),
-                           system_config=SystemConfig(name="local",ncpus=12,ngpus=0))
-    @my_workflow.component(name="sim",args={"runcount": RC(100000)},ppn=6)
+                           system_config=SystemConfig(name="local",ncpus=12,ngpus=0,cpus=[1,2,3,4,5,6,7,8,9,10,11,12],gpus=[]))
+    @my_workflow.component(name="sim",type="remote",args={"runcount": RC(100000)},ppn=6)
     def run_simulation(runcount:RC=RC(10000)):
         from mpi4py import MPI
         MPI.Init()
@@ -23,7 +26,7 @@ def test_workflow():
         print(f"Hello from rank {rank}")
         MPI.Finalize()
 
-    @my_workflow.component(name="sim2",args={"runcount": 22},ppn=6)
+    @my_workflow.component(name="sim2",type="remote",args={"runcount": 22},ppn=6)
     def sim2(runcount=10):
         from mpi4py import MPI
         MPI.Init()
