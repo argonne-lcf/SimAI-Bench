@@ -1,5 +1,5 @@
 {
     "type": "redis",
     "is_clustered": false,
-    "redis-server-exe": "/home/ht1410/redis/src/redis-server"
+    "redis_server_exe": "/home/ht1410/redis/src/redis-server"
 }

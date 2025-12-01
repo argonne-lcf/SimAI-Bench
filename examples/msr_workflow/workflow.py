@@ -1,6 +1,7 @@
-from SimAIBench import Workflow, ServerManager
+from SimAIBench import Workflow, ServerManager, SystemConfig
 from sim_exec import main as sim_main
 from train_ai_exec import main as train_ai_main
+from SimAIBench.config import ServerConfig, server_registry
 import os
 import argparse
 import json
@@ -28,7 +29,7 @@ def main():
     os.environ["ZE_FLAT_DEVICE_HIERARCHY"] = "COMPOSITE"
     
     # Initialize workflow with MPI launcher and Aurora system specifications
-    my_workflow = Workflow(launcher={"mode":"mpi"}, sys_info={"name": "aurora", "ncores_per_node": 104, "ngpus_per_node": 12})
+    my_workflow = Workflow(system_config=SystemConfig(name="aurora", ncpus=104, ngpus=12, cpus = [i for i in range(104)], gpus=[f"{i}.{j}" for i in range(6) for j in range(2)]))
 
     # Get available compute nodes from PBS scheduler
     nodes = get_nodes()
@@ -71,8 +72,10 @@ def main():
         else:
             server_config["server-address"] = os.path.join(os.getcwd(), args.staging_dir)
 
+    type = server_config["type"]
+    del server_config["type"]
     # Start the data server with logging enabled
-    server = ServerManager("server", config=server_config, logging=True, log_level=logging.DEBUG)
+    server = ServerManager("server", config=server_registry.create_config(type=type,**server_config), logging=True, log_level=logging.DEBUG)
     server.start_server()
     
     # If using clustered Redis, create the cluster after individual servers are started

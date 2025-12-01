@@ -111,5 +111,5 @@ def test_dynamic_workflow():
 
 
 if __name__ == "__main__":
-    # test_static_workflow()
+    test_static_workflow()
     test_dynamic_workflow()

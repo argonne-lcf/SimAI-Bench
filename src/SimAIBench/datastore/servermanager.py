@@ -213,8 +213,6 @@ class ServerManager:
 
     def _setup_server(self):
         """Setup the appropriate server based on configuration."""
-        if self.logger:
-            self.logger.info(f"Setting up {self.config['type']} server on {self.config.get('server-address', 'unknown')}")
         
         if self.config["type"] == "filesystem":
             if "server_address" not in self.config:

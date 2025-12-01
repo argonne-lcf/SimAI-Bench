@@ -286,8 +286,6 @@ class ServerManagerFilesystem(BaseServerManager):
 
     def _setup_server(self):
         """Setup the filesystem server - create directory structure."""
-        if self.logger:
-            self.logger.info(f"Setting up {self.config.type} server on {getattr(self.config, 'server_address', 'unknown')}")
         
         if self.config.type == "filesystem":
             if not hasattr(self.config, 'server_address') or not self.config.server_address:
@@ -305,6 +303,9 @@ class ServerManagerFilesystem(BaseServerManager):
                 self.config.nshards = 64
             if self.logger:
                 self.logger.info(f"Using node-local directory {self.config.server_address}")
+        
+        if self.logger:
+            self.logger.info(f"Setting up {self.config.type} server on {getattr(self.config, 'server_address', 'unknown')}")
     
     def stop_server(self):
         """Stop the filesystem server (no-op since no process is running)."""

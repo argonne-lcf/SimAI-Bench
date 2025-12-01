@@ -63,7 +63,7 @@ class ServerConfigRegistry:
     def create_config(self, type: str, **kwargs) -> ServerConfig:
         """Create a server config instance for a given type"""
         config_class = self.get_config_class(type)
-        return config_class(**kwargs)
+        return config_class(type=type, **kwargs)
     
     def list_types(self) -> list[str]:
         """List all available server types"""

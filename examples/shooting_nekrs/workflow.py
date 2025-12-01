@@ -1,4 +1,4 @@
-from SimAIBench import Workflow, ServerManager
+from SimAIBench import Workflow, ServerManager, server_registry, SystemConfig
 from sim_exec import main as sim_main
 from train_ai_exec import main as train_ai_main
 from infer_ai_exec import main as infer_ai_main
@@ -29,7 +29,7 @@ def main():
     args = parser.parse_args()
 
     os.environ["ZE_FLAT_DEVICE_HIERARCHY"] = "COMPOSITE"
-    my_workflow = Workflow(launcher={"mode":"mpi"}, sys_info={"name": "aurora", "ncores_per_node": 104, "ngpus_per_node": 12})
+    my_workflow = Workflow(system_config=SystemConfig(name="aurora", ncpus=104, ngpus=12, cpus = [i for i in range(104)], gpus=[f"{i}.{j}" for i in range(6) for j in range(2)]))
 
     ###get nodes
     nodes = get_nodes()
@@ -58,7 +58,10 @@ def main():
                 args.staging_dir = os.path.join(os.getcwd(), args.staging_dir)
         server_config["server-address"] = args.staging_dir
 
-    server = ServerManager("server", config=server_config, logging=True, log_level=logging.DEBUG)
+    type = server_config["type"]
+    del server_config["type"]
+
+    server = ServerManager("server", config=server_registry.create_config(type=type, **server_config), logging=True, log_level=logging.DEBUG)
     server.start_server()
 
     server_info = server.get_server_info()
