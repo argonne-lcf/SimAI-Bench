@@ -6,8 +6,9 @@ This module defines the common interfaces that all backend implementations must 
 
 from abc import ABC, abstractmethod
 from typing import Union, List, Dict, Optional, Any
-import logging as logging_
+import logging as logging_package
 import contextlib
+import os
 
 from SimAIBench.config import ServerConfig
 
@@ -21,7 +22,7 @@ class BaseDataStore(ABC):
     """
     
     def __init__(self, name: str, server_info: Union[str, dict], logging: bool = False, 
-                 log_level: int = logging_.INFO, is_colocated: bool = False):
+                 log_level: int = logging_package.INFO, is_colocated: bool = False):
         """
         Initialize the DataStore.
         
@@ -29,7 +30,7 @@ class BaseDataStore(ABC):
             name: Name of the DataStore instance
             server_info: Server information (serialized string or dict)
             logging: Enable logging (default: False)
-            log_level: Logging level (default: logging.INFO)
+            log_level: Logging level (default: logging_package.INFO)
             is_colocated: For some backends, only connect to servers on the same hostname (default: False)
         """
         self.name = name
@@ -37,12 +38,30 @@ class BaseDataStore(ABC):
         self.is_colocated = is_colocated
         
         # Setup logging
-        if logging:
-            self.logger = logging_.getLogger(f"{self.__class__.__name__}_{name}")
-            self.logger.setLevel(log_level)
-        else:
-            self.logger = None
+        self.logger = None
+        self._init_logger()
     
+    def _init_logger(self):
+        log_level_str = os.environ.get("SIMAIBENCH_LOGLEVEL","INFO")
+        if log_level_str == "INFO":
+            log_level = logging_package.INFO
+        elif log_level_str == "DEBUG":
+            log_level = logging_package.DEBUG
+        else:
+            log_level = logging_package.INFO
+
+        self.logger = logging_package.getLogger(f"Datastore.{self.name}")
+        self.logger.setLevel(log_level)
+        if not self.logger.handlers:
+            log_dir = os.path.join(os.getcwd(), "logs")
+            os.makedirs(log_dir, exist_ok=True)
+            log_file = os.path.join(log_dir, f"{self.name}_datastore.log")
+            file_handler = logging_package.FileHandler(log_file)
+            file_handler.setLevel(log_level)
+            formatter = logging_package.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            file_handler.setFormatter(formatter)
+            self.logger.addHandler(file_handler)
+
     @abstractmethod
     def _setup_client(self):
         """Setup client connections based on configuration."""
@@ -134,7 +153,7 @@ class BaseServerManager(ABC):
     Responsible for launching, monitoring, and stopping server processes.
     """
     
-    def __init__(self, name: str, config: ServerConfig, logging: bool = False, log_level: int = logging_.INFO):
+    def __init__(self, name: str, config: ServerConfig, logging: bool = False, log_level: int = logging_package.INFO):
         """
         Initialize the ServerManager.
         
@@ -142,17 +161,36 @@ class BaseServerManager(ABC):
             name: Name of the server instance
             config: Configuration object for the server
             logging: Enable logging (default: False)
-            log_level: Logging level (default: logging.INFO)
+            log_level: Logging level (default: logging_package.INFO)
         """
         self.name = name
         self.config = config
         
         # Setup logging
+        self.logger = None
         if logging:
-            self.logger = logging_.getLogger(f"{self.__class__.__name__}_{name}")
-            self.logger.setLevel(log_level)
+            self._init_logger()
+    
+    def _init_logger(self):
+        log_level_str = os.environ.get("SIMAIBENCH_LOGLEVEL","INFO")
+        if log_level_str == "INFO":
+            log_level = logging_package.INFO
+        elif log_level_str == "DEBUG":
+            log_level = logging_package.DEBUG
         else:
-            self.logger = None
+            log_level = logging_package.INFO
+
+        self.logger = logging_package.getLogger(f"ServerManager_{self.name}")
+        self.logger.setLevel(log_level)
+        if not self.logger.handlers:
+            log_dir = os.path.join(os.getcwd(), "logs")
+            os.makedirs(log_dir, exist_ok=True)
+            log_file = os.path.join(log_dir, f"{self.name}_servermanager.log")
+            file_handler = logging_package.FileHandler(log_file)
+            file_handler.setLevel(log_level)
+            formatter = logging_package.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            file_handler.setFormatter(formatter)
+            self.logger.addHandler(file_handler)
     
     @abstractmethod
     def start_server(self):

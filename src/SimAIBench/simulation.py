@@ -22,10 +22,10 @@ class Simulation:
                 "config": {"type": "filesystem", "server-address": os.path.join(os.getcwd(), ".tmp"), "nshards": 64}
             }
         
-        self._datastore = DataStore(name, server_info, logging=logging, log_level=log_level, is_colocated=kwargs.get("is_colocated", False))
+        self.datastore = DataStore(name, server_info, logging=logging, log_level=log_level, is_colocated=kwargs.get("is_colocated", False))
         
         if kwargs.get("profile_store",False) and kwargs.get("profile_server_info",None):
-            self._datastore = DataStoreProfiler(self._datastore,kwargs["profile_server_info"])
+            self.datastore = DataStoreProfiler(self.datastore,kwargs["profile_server_info"])
 
         self.name = name
         self.comm = comm
@@ -42,9 +42,31 @@ class Simulation:
             self.local_rank = kwargs.get("local_rank", 0)
         
         self.logger = None
-        
+        if logging:
+            self._init_logger()
         if self.logger:
             self.logger.info(f"Simulation initialized with name {self.name}, rank {self.rank}, size {self.size}, local_rank {self.local_rank}")
+
+    def _init_logger(self):
+        log_level_str = os.environ.get("SIMAIBENCH_LOGLEVEL","INFO")
+        if log_level_str == "INFO":
+            log_level = _logging.INFO
+        elif log_level_str == "DEBUG":
+            log_level = _logging.DEBUG
+        else:
+            log_level = _logging.INFO
+
+        self.logger = _logging.getLogger(f"{LOGGER_NAME}.{self.name}.rank{self.rank}")
+        self.logger.setLevel(log_level)
+        # if not self.logger.handlers:
+        log_dir = os.path.join(os.getcwd(), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(log_dir, f"{self.name}_rank{self.rank}.log")
+        file_handler = _logging.FileHandler(log_file)
+        file_handler.setLevel(log_level)
+        formatter = _logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        self.logger.addHandler(file_handler)
 
     def init_from_dict(self, config:dict):
         kernels = config.get('kernels', [])
@@ -169,11 +191,12 @@ class Simulation:
 
     ##function for backward compatibility
     def stage_read(self,*args,**kwargs):
-        return self._datastore.stage_read(*args,**kwargs)
+        return self.datastore.stage_read(*args,**kwargs)
     
     ##function for backward compatibility
     def stage_write(self,*args,**kwargs):
-        return self._datastore.stage_write(*args,**kwargs)
+        return self.datastore.stage_write(*args,**kwargs)
+
 
 ###This was quite unrelaible. So, switched to keeping count or run_time during the self.run itself     
     # def set_kernel_run_count_by_time(self, name, total_time):

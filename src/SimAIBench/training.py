@@ -19,9 +19,11 @@ import os
 import datetime
 import math
 import gc
-import logging as logging_
+import logging as _logging
 import numpy as np
 from typing import Union
+
+LOGGER_NAME = __name__
 
 class SimpleFeedForwardNet(nn.Module):
     def __init__(self, 
@@ -125,11 +127,11 @@ class AI:
                 ddp=False, 
                 comm=None,
                 logging=False,
-                log_level=logging_.INFO,
+                log_level=_logging.INFO,
                 **kwargs):
-        self._datastore = DataStore(name,server_info=server_info,logging=logging,log_level=log_level, is_colocated=kwargs.get("is_colocated", False))
+        self.datastore = DataStore(name,server_info=server_info,logging=logging,log_level=log_level, is_colocated=kwargs.get("is_colocated", False))
         if kwargs.get("profile_store",False) and kwargs.get("profile_server_info",None):
-            self._datastore = DataStoreProfiler(self._datastore,kwargs["profile_server_info"])
+            self.datastore = DataStoreProfiler(self.datastore,kwargs["profile_server_info"])
         self.name = name
         self.model_type = model_type
         self.loss_type = loss_type
@@ -187,6 +189,32 @@ class AI:
             neurons_per_layer=neurons_per_layer
             )
         self.setup_training()
+
+        self.logger = None
+        if logging:
+            self._init_logger()
+    
+    def _init_logger(self):
+
+        log_level_str = os.environ.get("SIMAIBENCH_LOGLEVEL","INFO")
+        if log_level_str == "INFO":
+            log_level = _logging.INFO
+        elif log_level_str == "DEBUG":
+            log_level = _logging.DEBUG
+        else:
+            log_level = _logging.INFO
+
+        self.logger = _logging.getLogger(f"{LOGGER_NAME}.{self.name}.rank{self.local_rank}")
+        self.logger.setLevel(log_level)
+        if not self.logger.handlers:
+            log_dir = os.path.join(os.getcwd(), "logs")
+            os.makedirs(log_dir, exist_ok=True)
+            log_file = os.path.join(log_dir, f"{self.name}_rank{self.local_rank}.log")
+            file_handler = _logging.FileHandler(log_file)
+            file_handler.setLevel(log_level)
+            formatter = _logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            file_handler.setFormatter(formatter)
+            self.logger.addHandler(file_handler)
             
     def build_model(self,             
                     dropout=0.1, 
@@ -331,11 +359,11 @@ class AI:
         
     ##function for backward compatibility
     def stage_read(self,*args,**kwargs):
-        return self._datastore.stage_read(*args,**kwargs)
+        return self.datastore.stage_read(*args,**kwargs)
     
     ##function for backward compatibility
     def stage_write(self,*args,**kwargs):
-        return self._datastore.stage_write(*args,**kwargs)
+        return self.datastore.stage_write(*args,**kwargs)
 
 
 # def set_model_params_from_train_time(self,target_time:float):

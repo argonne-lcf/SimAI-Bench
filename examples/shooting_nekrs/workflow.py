@@ -1,7 +1,7 @@
 from SimAIBench import Workflow, ServerManager, server_registry, SystemConfig
-from sim_exec import main as sim_main
-from train_ai_exec import main as train_ai_main
-from infer_ai_exec import main as infer_ai_main
+from sim_exec import sim_main
+from train_ai_exec import train_main
+from infer_ai_exec import infer_main
 import os
 import argparse
 import json
@@ -45,10 +45,10 @@ def main():
     global_sim_ddict = None
     # For Redis/Dragon servers, set up network addresses using allocated nodes
     if server_config.get("type", "filesystem") == "redis" or server_config.get("type", "filesystem") == "dragon":
-        server_config["server-address"] = ",".join([f"{n}:6875" for n in nodes])
+        server_config["server_address"] = ",".join([f"{n}:6875" for n in nodes])
         if server_config.get("type", "filesystem") == "dragon":
             total_mem = 1073741824 * 100 * len(nodes)  if server_config.get("is_clustered", False) else 1073741824 * 100
-            server_config["server-options"] = {"total_mem": total_mem}  # 64GB per node
+            server_config["server_options"] = {"total_mem": total_mem}  # 64GB per node
             global_AI_ddict = DDict(total_mem=1024*1024*1024*5)
             global_sim_ddict = DDict(total_mem=1024*1024*1024*5)
     elif server_config.get("type", "filesystem") == "filesystem" or server_config.get("type", "filesystem") == "node-local":
@@ -56,7 +56,7 @@ def main():
             server_config["nshards"] = 8*len(nodes)
             if not args.staging_dir.startswith("/"):
                 args.staging_dir = os.path.join(os.getcwd(), args.staging_dir)
-        server_config["server-address"] = args.staging_dir
+        server_config["server_address"] = args.staging_dir
 
     type = server_config["type"]
     del server_config["type"]
@@ -95,7 +95,7 @@ def main():
 
     my_workflow.register_component(
         name="train_ai",
-        executable=train_ai_main,
+        executable=train_main,
         type="remote" if server_info["type"] != "dragon" else "dragon",
         args={
             "ai_config": train_ai_config,

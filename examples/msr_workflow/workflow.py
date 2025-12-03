@@ -59,18 +59,18 @@ def main():
         
     # For Redis/Dragon servers, set up network addresses using allocated nodes
     if server_config.get("type", "filesystem") == "redis" or server_config.get("type", "filesystem") == "dragon":
-        server_config["server-address"] = ",".join([f"{n}:6875" for n in db_nodes])
+        server_config["server_address"] = ",".join([f"{n}:6875" for n in db_nodes])
         if server_config.get("type", "filesystem") == "dragon":
             if args.server_location == "simulation":
-                server_config["server-options"] = {"total_mem": 107374182400*len(nodes)}
+                server_config["server_options"] = {"total_mem": 107374182400*len(nodes)}
             else:
-                server_config["server-options"] = {"total_mem": min(107374182400*len(nodes)//4, 107374182400*8)}
+                server_config["server_options"] = {"total_mem": min(107374182400*len(nodes)//4, 107374182400*8)}
     elif server_config.get("type", "filesystem") == "filesystem":
         server_config["nshards"] = 8*len(nodes)
         if args.staging_dir.startswith("/"):
-            server_config["server-address"] = args.staging_dir
+            server_config["server_address"] = args.staging_dir
         else:
-            server_config["server-address"] = os.path.join(os.getcwd(), args.staging_dir)
+            server_config["server_address"] = os.path.join(os.getcwd(), args.staging_dir)
 
     type = server_config["type"]
     del server_config["type"]
@@ -81,7 +81,7 @@ def main():
     # If using clustered Redis, create the cluster after individual servers are started
     if server_config.get("type", "filesystem") == "redis" and server_config.get("is_clustered", False):
         ServerManager.create_redis_cluster(
-            server_addresses=server_config["server-address"],
+            server_addresses=server_config["server_address"],
             redis_cli_path="/home/ht1410/redis/src/redis-cli",
             replicas=0,  # No replicas for this setup
             timeout=30,
@@ -112,6 +112,7 @@ def main():
             nodes=[node],
             ppn=12,  # 12 processes per node (matches Aurora GPU count)
             num_gpus_per_process=1,  # 1 GPU per process
+            cpu_affinity=[1,2,3,4,5,6,7,8,9,10,11,12],
             # GPU affinity mapping for Aurora's 12 GPUs per node (tiles 0.0, 0.1, 1.0, 1.1, etc.)
             gpu_affinity=["0.0","0.1","1.0","1.1","2.0","2.1","3.0","3.1","4.0","4.1","5.0","5.1"],
         )
@@ -135,6 +136,7 @@ def main():
         ppn=12,  # 12 processes per node
         num_gpus_per_process=1,  # 1 GPU per process
         # GPU affinity mapping for Aurora's 12 GPUs per node
+        cpu_affinity=[1,2,3,4,5,6,7,8,9,10,11,12],
         gpu_affinity=["0.0","0.1","1.0","1.1","2.0","2.1","3.0","3.1","4.0","4.1","5.0","5.1"]
     )
 

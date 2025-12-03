@@ -20,7 +20,31 @@ class Callable(ABC):
 
     def __init__(self,workflow_component: WorkflowComponent):
         self.__name__ = workflow_component.name
-        
+        self.logger = None
+    
+    def _init_logger(self):
+        if self.logger is not None:
+            return
+        log_level_str = os.environ.get("SIMAIBENCH_LOGLEVEL","INFO")
+        if log_level_str == "INFO":
+            log_level = logging.INFO
+        elif log_level_str == "DEBUG":
+            log_level = logging.DEBUG
+        else:
+            log_level = logging.INFO
+
+        self.logger = logging.getLogger(f"Callable_{self.__name__}")
+        self.logger.setLevel(log_level)
+        if not self.logger.handlers:
+            log_dir = os.path.join(os.getcwd(), "logs")
+            os.makedirs(log_dir, exist_ok=True)
+            log_file = os.path.join(log_dir, f"{self.__name__}_callable.log")
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setLevel(log_level)
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            file_handler.setFormatter(formatter)
+            self.logger.addHandler(file_handler)
+
     @abstractmethod
     def __call__(self, *args, **kwargs):
         pass
@@ -66,7 +90,8 @@ class RegularCallable(Callable):
     
     def __call__(self, cluster_resource: ClusterResource, *results):
         # Create fresh logger in the worker process
-        logger = logging.getLogger(LOGGER_NAME)
+        self._init_logger()
+        logger = self.logger
         logger.info(f"Executing regular component '{self.component_name}'")
         
         try:
@@ -121,6 +146,7 @@ class ResourceAwareCallable(Callable):
         # Store resource requirements (don't create JobResource yet)
         self.component_name = self.__name__
         self.nnodes = original_workflow_component.nnodes
+        self.nodes = original_workflow_component.nodes
         self.ppn = original_workflow_component.ppn
         self.num_gpus_per_process = getattr(original_workflow_component, 'num_gpus_per_process', 0)
         
@@ -138,7 +164,8 @@ class ResourceAwareCallable(Callable):
             self.gpu_affinity = copy.deepcopy(original_workflow_component.gpu_affinity)
 
     def __call__(self, cluster_resource: ClusterResource, *results):
-        logger = logging.getLogger(LOGGER_NAME)
+        self._init_logger()
+        logger = self.logger
         logger.info(f"Requesting resources for component '{self.__name__}'")
         logger.debug(f"Resource requirements: {self.nnodes} nodes, {self.ppn} processes per node, {self.total_gpus} GPUs per node")
         
@@ -148,7 +175,8 @@ class ResourceAwareCallable(Callable):
                 resources=[
                     NodeResourceList(cpus=self.cpu_affinity, gpus=self.gpu_affinity) 
                     for _ in range(self.nnodes)
-                ]
+                ],
+                nodes=self.nodes
             )
         else:
             # Create JobResource at execution time (not init time)
@@ -156,7 +184,8 @@ class ResourceAwareCallable(Callable):
                 resources=[
                     NodeResourceCount(ncpus=self.ppn, ngpus=self.total_gpus) 
                     for _ in range(self.nnodes)
-                ]
+                ],
+                nodes=self.nodes
             )
         
         # Try to allocate resources with timeout protection
@@ -212,7 +241,7 @@ class MPICallable(Callable):
         self.return_array = np.empty(workflow_component.return_dim) if len(workflow_component.return_dim) != 0 else None
         self.tmp_dir = os.path.join(os.getcwd(),".callable_tmp")
         self.gpu_selector = os.environ.get("SIMAIBENCH_GPUSELECTOR","ZE_AFFINITY_MASK")
-        self.env = os.environ
+        self.env = dict(os.environ)
         os.makedirs(self.tmp_dir,exist_ok=True)
         
         # Handle executable serialization
@@ -247,7 +276,8 @@ class MPICallable(Callable):
     
     def _buildcmd(self, job_resource: JobResource):
         """Function to build the mpi cmd from the job resources"""
-        logger = logging.getLogger(LOGGER_NAME)
+        self._init_logger()
+        logger = self.logger
         env = {}
         launcher_cmd = ""
         common_cpus = set.intersection(*[set(node_resource.cpus) for node_resource in job_resource.resources])
@@ -296,7 +326,8 @@ class MPICallable(Callable):
 
     def __call__(self, cluster_resource: ClusterResource, *results):
         # Create fresh logger in worker process
-        logger = logging.getLogger(LOGGER_NAME)
+        self._init_logger()
+        logger = self.logger
         logger.info(f"Executing MPI component '{self.component_name}'")
         
         # Extract job_resource from results
@@ -313,13 +344,13 @@ class MPICallable(Callable):
         try:
             # Construct MPI command
             nodes_str = ",".join(job_resource.nodes)
-            if self.nnodes > 1:
+            if self.nnodes >= 1:
                 full_cmd = f"mpirun -np {self.ppn * self.nnodes} -ppn {self.ppn} --hosts {nodes_str} {laucher_opts} {self.cmd}"
             else:
                 full_cmd = f"mpirun -np {self.ppn * self.nnodes} {laucher_opts} {self.cmd}"
             
             logger.info(f"Executing MPI command for '{self.component_name}'")
-            logger.debug(f"Full commad: {full_cmd}")
+            logger.info(f"Full commad: {full_cmd}")
             
             # Execute MPI command
             result = subprocess.run(full_cmd, shell=True, capture_output=True, text=True, env=self.env.update(env))

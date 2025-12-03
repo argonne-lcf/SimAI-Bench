@@ -34,3 +34,8 @@ class WorkflowComponent:
     env_vars: Dict[str, str] = field(default_factory=dict)
     dependencies: List[Union[str, Dict[str, int]]] = field(default_factory=list)
     return_dim: Sequence[int] = field(default_factory=list)
+
+    def __post_init__(self):
+        """Validate and normalize component configuration after initialization."""
+        if self.nodes:
+            self.nnodes = len(self.nodes)

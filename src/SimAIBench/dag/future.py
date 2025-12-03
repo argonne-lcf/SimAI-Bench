@@ -13,3 +13,6 @@ class DagFuture:
     def done(self):
         dag,last_updated = self._dag_store.get_dag()
         return dag.graph.nodes[self._node_name]["status"] == NodeStatus.COMPLETED or dag.graph.nodes[self._node_name]["status"] == NodeStatus.FAILED
+    
+    def exception(self):
+        pass

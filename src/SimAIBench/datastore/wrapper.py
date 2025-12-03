@@ -93,6 +93,10 @@ class DataStore:
         
         return backend_type
     
+    @property
+    def backend(self):
+        return self._backend
+    
     # Delegate all DataStore methods to the backend
     def stage_write(self, key: str, data: Any, persistant: bool = True, client_id: int = 0, is_local: bool = False):
         """Stage data as a key-value pair."""

@@ -111,6 +111,8 @@ class DataStoreRedis(BaseDataStore):
                 for address in self.config["server_address"].split(","):
                     host = address.strip().split(":")[0]
                     port = int(address.strip().split(":")[1])
+                    if self.logger:
+                        self.logger.info(f"Server hostname:{host}, my hostname:{my_hostname}. Server port: {port}")
                     if host == my_hostname or host == "localhost" or host == "127.0.0.1":
                         client = redis.Redis(host=host, port=port)
                         client.ping()

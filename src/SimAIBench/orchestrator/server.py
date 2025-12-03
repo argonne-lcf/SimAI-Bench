@@ -24,17 +24,17 @@ from SimAIBench.profiling import DagStoreProfiler, CallableProfiler
 from SimAIBench.config import SystemConfig, OchestratorConfig, server_registry
 from SimAIBench.datastore import DataStore, ServerManager
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    encoding='utf-8',
-    errors='replace',
-    # handlers=[
-    #     logging.StreamHandler(),
-    #     logging.FileHandler('orchestrator.log',  mode='w', encoding='utf-8')
-    # ]
-)
+# # Configure logging
+# logging.basicConfig(
+#     level=logging.INFO,
+#     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+#     encoding='utf-8',
+#     errors='replace',
+#     # handlers=[
+#     #     logging.StreamHandler(),
+#     #     logging.FileHandler('orchestrator.log',  mode='w', encoding='utf-8')
+#     # ]
+# )
 
 class Message(BaseModel):
     instruction: Literal["start","stop","continue"]
@@ -44,7 +44,8 @@ class Orchestrator:
     def __init__(self, 
                  sys_info: SystemConfig = SystemConfig(name="local"),
                  config: OchestratorConfig = OchestratorConfig(name="parsl-local")):
-        self.logger = logging.getLogger(__name__)
+        self.logger = None
+        self._init_logger()
         self.config = config
         self.sys_info = NodeResourceList.from_config(sys_info)
         self.cluster_resource = DistributedClusterResource(nodes=get_nodes(),system_info=self.sys_info)
@@ -67,6 +68,27 @@ class Orchestrator:
         self.executor = None
         self.dag_futures: Dict[str, DagFuture] = {}
     
+    def _init_logger(self):
+        log_level_str = os.environ.get("SIMAIBENCH_LOGLEVEL","INFO")
+        if log_level_str == "INFO":
+            log_level = logging.INFO
+        elif log_level_str == "DEBUG":
+            log_level = logging.DEBUG
+        else:
+            log_level = logging.INFO
+
+        self.logger = logging.getLogger("Orchestrator")
+        self.logger.setLevel(log_level)
+        if not self.logger.handlers:
+            log_dir = os.path.join(os.getcwd(), "logs")
+            os.makedirs(log_dir, exist_ok=True)
+            log_file = os.path.join(log_dir, f"orchestrator.log")
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setLevel(log_level)
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            file_handler.setFormatter(formatter)
+            self.logger.addHandler(file_handler)
+
     def report_stats(self):
         """Wait for completion and check for updates"""
         successful_tasks = 0
@@ -130,13 +152,18 @@ class Orchestrator:
             ##check the done futures and update the dag store
             ndone = 0
             for node, future in futures.items():
+                if dag.graph.nodes[node]["status"] == NodeStatus.COMPLETED or \
+                    dag.graph.nodes[node]["status"] == NodeStatus.FAILED:
+                    continue
                 if future.done():
                     ndone += 1
                     try:
                         result = future.result()
                         dag.graph.nodes[node]["status"] = NodeStatus.COMPLETED
+                        self.logger.info(f"{node} completed successfully!")
                     except Exception as e:
                         dag.graph.nodes[node]["status"] = NodeStatus.FAILED
+                        self.logger.info(f"{node} failed with exception {e}")
             if ndone > 0:
                 self.dagstore.put_dag(dag)
 
