@@ -110,42 +110,23 @@ class Orchestrator:
     def _submit(self, instruction_queue: Queue, result_queue: Queue):
         """Checks the dag and submits any dag that is not_submitted status"""
         futures = {}
-        dag_futures = {}
         while True:
             dag_futures = {}
             dag,last_update = self.dagstore.get_dag()
             if dag is not None:
-                graph: DiGraph = dag.graph
-                node_execution_order = list(topological_sort(graph))
-                counter = 0
-                for i, node in enumerate(node_execution_order):
-                    node_obj = graph.nodes[node]
-                    if node_obj['status'] == NodeStatus.NOT_SUBMITTED:
-                        try:
-                            self.logger.debug(f"Submitting {node} for execution")
-                            args = [self.cluster_resource]
-                            # Iterate through dependencies and collect their futures
-                            predecessors = list(graph.predecessors(node))
-                            if predecessors:
-                                self.logger.debug(f"Node {node} has {len(predecessors)} dependencies: {predecessors}")
-                                for predecessor in predecessors:
-                                    args.append(futures[predecessor])
-                            else:
-                                self.logger.debug(f"Node {node} has no dependencies")
-                            if self.config.profile:
-                                futures[node] = self.executor.submit(CallableProfiler(node_obj["callable"],self.profiler_server_info),
-                                                                     args)
-                            else:
-                                futures[node] = self.executor.submit(node_obj["callable"],args)
-                            dag_futures[node] = DagFuture(self.dagstore,node)
-                            node_obj["status"] = next(node_obj["status"])
-                            counter += 1
-                        except Exception as e:
-                            self.logger.error(f"Submitting {node} failed with exception {e}")
-                            node_obj["status"] = NodeStatus.FAILED
-                        
-                if counter > 0 :
-                    self.logger.info(f"Submitted {counter} nodes for execution")
+                if self.config.profile:
+                    for node in dag.graph.nodes():
+                        node_obj = dag.graph.nodes[node]
+                        node_obj["callable"] = CallableProfiler(node_obj["callable"],self.profiler_server_info)
+
+                dag, futures_update = \
+                    self.executor.submit_dag(self.cluster_resource, dag)
+                futures.update(futures_update)
+                for node in futures_update:
+                    dag_futures[node] = DagFuture(self.dagstore, node)
+                
+                if len(futures_update) > 0 :
+                    self.logger.info(f"Submitted {len(futures_update)} nodes for execution")
                     self.dagstore.put_dag(dag)
                     result_queue.put(dag_futures)
 
@@ -177,7 +158,6 @@ class Orchestrator:
             except Exception:
                 pass
             time.sleep(self.config.submit_loop_sleep_time)
-        return counter
 
     def start(self):
         """Start the server submit loop using a thread"""

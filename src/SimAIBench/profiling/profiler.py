@@ -95,6 +95,10 @@ class CallableProfiler(Profiler):
         self.__name__ = callable.__name__
         self.id = str(uuid.uuid4())
 
+    @property
+    def callable(self):
+        return self._callable
+    
     def __call__(self, *args, **kwargs):
         with Timer(f"{self.__name__}") as timer:
             result =  self._callable(*args, **kwargs)

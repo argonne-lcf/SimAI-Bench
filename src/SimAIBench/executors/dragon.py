@@ -7,12 +7,35 @@ try:
     from dragon.native.process import ProcessTemplate, Process as DragonProcess, Popen
     from dragon.infrastructure.policy import Policy
     DRAGON_AVAILABLE = True
+    from typing import Any, Sequence
 except ImportError:
     DRAGON_AVAILABLE = False
     # When Dragon is not available, we'll use Any for type hints
-    ProcessGroup = Any
+    ProcessGroup = any
 
-class DragonExecutor:
+from .base import BaseExecutor
+
+class DragonExecutor(BaseExecutor):
+
+    def __init__(self):
+        super().__init__()
+        if not DRAGON_AVAILABLE:
+            raise ModuleNotFoundError("Dragon is not available")
+        
+
+    
+    def submit(self, f: Any, args: Sequence) -> Future:
+        """
+        Submits a task using the TAPS engine.
+
+        Args:
+            task
+            args: arguments
+        """
+    
+    def cleanup(self, *args, **kwargs):
+        return super().cleanup(*args, **kwargs)
+
     @staticmethod
     def _launch_dragon_component(workflow_component,size_kwarg="size",rank_kwarg="rank",mpi_kwarg="init_MPI") -> Any:
         """
