@@ -97,7 +97,7 @@ class RegularCallable(Callable):
         try:
             if self.executable_type == 'callable':
                 # Deserialize and execute the callable
-                logger.debug(f"Executing callable for '{self.component_name}'")
+                logger.info(f"Executing callable for '{self.component_name}'")
                 
                 # Deserialize the function
                 executable = cloudpickle.loads(

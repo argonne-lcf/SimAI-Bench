@@ -1,11 +1,15 @@
 
-
+import os
+from networkx import DiGraph, topological_sort
+from typing import Tuple, Dict
 # Handle Dragon imports and type hints
 try:
     import dragon
     from dragon.native.process_group import ProcessGroup
     from dragon.native.process import ProcessTemplate, Process as DragonProcess, Popen
     from dragon.infrastructure.policy import Policy
+    from dragon.workflows.batch import Batch
+    from dragon.workflows.batch.batch import AsyncDict, Task
     DRAGON_AVAILABLE = True
     from typing import Any, Sequence
 except ImportError:
@@ -14,17 +18,125 @@ except ImportError:
     ProcessGroup = any
 
 from .base import BaseExecutor
+from SimAIBench.component import WorkflowComponent
+from SimAIBench.dag import NodeStatus, DAG
+from SimAIBench.config import OchestratorConfig
+from SimAIBench.resources import NodeResourceList
+
+
+class DragonCompiledTaskFuture:
+    """
+    A simple wrapper around dragon task to provide methods like exception, done, cancel, result
+    :task
+    """
+    def __init__(self, task: Task, dag_task: Task):
+        self.task = task
+        self.dag_task = dag_task
+    
+    def cancel(self):
+        raise RuntimeError("Can't cancel the dragon task")
+
+    def done(self):
+        try:
+            self.dag_task.wait(0.1)
+            return True
+        except TimeoutError:
+            return False
+
+    def exception(self):
+        self.dag_task.wait()
+        return self.task.stderr.get()
+
+    def result(self):
+        return self.task.result
+
+
+class DragonTaskFuture:
+    """
+    A simple wrapper around dragon task to provide methods like exception, done, cancel, result
+    :task
+    """
+    def __init__(self, task: Task):
+        self.task = task
+    
+    def cancel(self):
+        raise RuntimeError("Can't cancel the dragon task")
+
+    def done(self):
+        try:
+            self.task.wait(0.1)
+            return True
+        except TimeoutError:
+            return False
+
+    def exception(self):
+        self.task.wait()
+        return self.task.stderr.get()
+
+    def result(self):
+        return self.task.result
 
 class DragonExecutor(BaseExecutor):
-
-    def __init__(self):
-        super().__init__()
+    def __init__(self, config: OchestratorConfig, sys_info: NodeResourceList):
+        super().__init__(config, sys_info)
         if not DRAGON_AVAILABLE:
             raise ModuleNotFoundError("Dragon is not available")
-        
-
+        self.batch = Batch(num_workers=1, disable_telem=True)
     
-    def submit(self, f: Any, args: Sequence) -> Future:
+
+    def submit_dag(self, cluster_resource: Any, dag: DAG) -> Tuple[DAG, Dict]:
+        """
+        Submit a DAG for execution
+
+        Note: 
+        Return future tracks the whole compiled DAG task.
+        
+        :param self: Description
+        :param cluster_resource: Description
+        :type cluster_resource: Any
+        :param dag: Description
+        :type dag: DAG
+        :return: Description
+        :rtype: Tuple[DAG, Dict]
+        """
+        futures = {}
+        dependencies = {}
+        tasks = {}
+        graph: DiGraph = dag.graph
+        node_execution_order = list(topological_sort(graph))
+        self.logger.info(f"node execution order: {node_execution_order}")
+        for i, node in enumerate(node_execution_order):
+            node_obj = graph.nodes[node]
+            if node_obj['status'] == NodeStatus.NOT_SUBMITTED:
+                try:
+                    self.logger.info(f"Submitting {node} for execution")
+                    args = [cluster_resource]
+                    # Iterate through dependencies and collect their futures
+                    predecessors = list(graph.predecessors(node))
+                    if predecessors:
+                        self.logger.debug(f"Node {node} has {len(predecessors)} dependencies: {predecessors}")
+                        for predecessor in predecessors:
+                            args.append(dependencies[predecessor])
+                    else:
+                        self.logger.debug(f"Node {node} has no dependencies")
+                    
+                    task = self._create_task(node_obj, args)
+                    tasks[node] = task
+                    dependencies[node] = task.result
+                    node_obj["status"] = next(node_obj["status"])
+                except Exception as e:
+                    self.logger.error(f"Submitting {node} failed with exception {e}")
+                    node_obj["status"] = NodeStatus.FAILED  
+            else:
+                self.logger.info(f"Skipping {node} submission due to {node_obj['status']}") 
+        if len(tasks) > 0:
+            dag_task = self.batch.compile(list(tasks.values()))
+            dag_task.start()
+            for node in node_execution_order:
+                futures[node] = DragonCompiledTaskFuture(task=tasks[node],dag_task=dag_task)
+        return dag, futures
+
+    def _create_task(self, node_obj: Any, args: Sequence) -> Task:
         """
         Submits a task using the TAPS engine.
 
@@ -32,98 +144,38 @@ class DragonExecutor(BaseExecutor):
             task
             args: arguments
         """
-    
-    def cleanup(self, *args, **kwargs):
-        return super().cleanup(*args, **kwargs)
+        wc: WorkflowComponent =  node_obj["component"]
 
-    @staticmethod
-    def _launch_dragon_component(workflow_component,size_kwarg="size",rank_kwarg="rank",mpi_kwarg="init_MPI") -> Any:
-        """
-        Launch a single component using Dragon.
-        
-        Args:
-            workflow_component: WorkflowComponent object to launch
-            size_kwarg: Keyword argument for total processes (default: "size")
-            rank_kwarg: Keyword argument for process rank (default: "rank")
-            mpi_kwarg: Keyword argument for MPI initialization (default: "init_MPI")
-            
-        Returns:
-            Launched process group
-        """
-        if not DRAGON_AVAILABLE:
-            raise RuntimeError("Dragon is not available")
-        
-        if not callable(workflow_component.executable):
-            raise ValueError("Dragon launcher requires Python callable, not string executable")
-        
-        # Calculate total processes
-        total_processes = workflow_component.ppn
-        if workflow_component.nodes:
-            total_processes = workflow_component.ppn * len(workflow_component.nodes)
-        
-        # Create process group
-        policy = Policy(distribution=Policy.Distribution.BLOCK)
-        pg = ProcessGroup(restart=False,policy=policy)
-        
-        # Add processes based on nodes and ppn
-        process_count = 0
-        for nid, node in enumerate(workflow_component.nodes or ["localhost"]):
-            for local_rank in range(workflow_component.ppn):
-                if process_count >= total_processes:
-                    break
-                
-                # Create placement policy
-                placement_policy = Policy(
-                    placement=Policy.Placement.HOST_NAME,
-                    host_name=node
-                )
-                
+        nnodes = wc.nnodes
+        ppn = wc.ppn
+        cpu_affinity = wc.cpu_affinity
+        gpu_affinity = wc.gpu_affinity
+        nodes = wc.nodes
+        np = ppn*nnodes
 
-                # Prepare environment
-                env = BasicLauncher._prepare_environment(
-                    additional_env=workflow_component.env_vars
-                )
-
-                # Set CPU affinity
-                if workflow_component.cpu_affinity and local_rank < len(workflow_component.cpu_affinity):
-                    placement_policy.cpu_affinity = [workflow_component.cpu_affinity[local_rank]]
-                
-                # Set GPU affinity
-                if workflow_component.gpu_affinity and local_rank < len(workflow_component.gpu_affinity):
-                    placement_policy.gpu_affinity = [workflow_component.gpu_affinity[local_rank]]
-                    env["ZE_AFFINITY_MASK"] = workflow_component.gpu_affinity[local_rank]
-                    env["CUDA_VISIBLE_DEVICES"] = workflow_component.gpu_affinity[local_rank]
-                
-                
-                # Create process template with args
-                template_args = []
-
-                # Add workflow component args
-                component_args = getattr(workflow_component, 'args', None)
-                if component_args:
-                    # Convert dict to tuple of values
-                    template_args.extend(component_args.values())
-                
-                pg.add_process(
-                    nproc=1,
-                    template=ProcessTemplate(
-                        target=workflow_component.executable,
-                        args=tuple(template_args),
-                        kwargs={size_kwarg: total_processes, rank_kwarg: process_count, mpi_kwarg: False},
-                        cwd=os.getcwd(),
-                        policy=placement_policy,
-                        stdout=Popen.DEVNULL,
-                        env=env
-                    )
-                )
-                
-                process_count += 1
-            
-            if process_count >= total_processes:
-                break
+        templates = []
+        for pid in range(np):
+            policy = Policy(
+                placement = Policy.Placement.HOST_NAME if nodes else Policy.Placement.DEFAULT,
+                host_name = nodes[pid//ppn] if nodes else "",
+                cpu_affinity = cpu_affinity,
+                gpu_env_str = os.environ.get("SIMAIBENCH_GPUSELECTOR","ZE_AFFINITY_MASK"),
+                gpu_affinity = [self.sys_info.gpus.index(gid) for gid in gpu_affinity] if gpu_affinity else None,
+            )
+            templates.append(
+                ProcessTemplate(target=node_obj["callable"],args=args,env = os.environ.copy(), policy=policy)
+            )
+        if np == 1:
+            task = self.batch.process(templates[0])
+        else:
+            task = self.batch.job(templates)
         
-        print(f"Launching Dragon process group with {process_count} processes on {len(workflow_component.nodes)} nodes")
-        pg.init()
-        pg.start()
+        return task
+
         
-        return pg
+    def cleanup(self):
+        try:
+            self.batch.close()
+            self.batch.join(timeout=5.0)
+        except Exception as e:
+            self.batch.terminate()

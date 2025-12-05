@@ -21,7 +21,7 @@ class OchestratorConfig(BaseModel):
         submit_loop_sleep_time (int): Time in seconds for the orchestrator to sleep between submission loops. Defaults to 10.
         listening_time (int): Time in seconds for the orchestrator to listen for incoming tasks or events. Defaults to 300.
     """
-    name: str = "process-pool"
+    name: Literal["ray","process-pool","parsl-local","parsl-htex","taps-htex","dask","thread-pool","dragon","taskvine","dragon"] = "process-pool"
     submit_loop_sleep_time: int = 10
     listening_time: int = 300
     profile: bool = False

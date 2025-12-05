@@ -6,7 +6,7 @@ import os, json
 import logging
 import time
 
-def test_static_workflow():
+def test_static_workflow(executor_name="thread-pool"):
     ##create server
     server_config = server_registry.create_config("filesystem")
     server = ServerManager("server",server_config)
@@ -14,7 +14,7 @@ def test_static_workflow():
     server_info = server.get_server_info()
 
     ##create a workflow
-    my_workflow = Workflow(orchestrator_config=OchestratorConfig(name="thread-pool"),
+    my_workflow = Workflow(orchestrator_config=OchestratorConfig(name=executor_name),
                            system_config=SystemConfig(name="local",ncpus=12,ngpus=0))
     ##register components
     @my_workflow.component(name="sim",type="remote",args={"runcount": 100, "server_info": server_info}, return_dim=[32,32,32])
@@ -39,7 +39,7 @@ def test_static_workflow():
     server.stop_server()
     
 
-def test_dynamic_workflow():
+def test_dynamic_workflow(executor_name="thread-pool"):
 
     ##A task that generates a chain of tasks.
     ##Each task simply appends the data to the key
@@ -83,7 +83,7 @@ def test_dynamic_workflow():
     server_info = server.get_server_info()
 
     #create necessary configs
-    orchestrator_config=OchestratorConfig(name="process-pool", profile=True)
+    orchestrator_config=OchestratorConfig(name=executor_name, profile=True)
     system_config=SystemConfig(name="local",ncpus=12,ngpus=0)
     
     orchestrator = Orchestrator(system_config,orchestrator_config)
@@ -111,5 +111,12 @@ def test_dynamic_workflow():
 
 
 if __name__ == "__main__":
-    test_static_workflow()
-    test_dynamic_workflow()
+    for exec_name in ["dragon"]:
+        print("*"*50)
+        print(f"Testing static workflow for {exec_name}")
+        print("*"*50)
+        test_static_workflow(executor_name=exec_name)
+        # print("*"*50)
+        # print(f"Testing dynamic workflow for {exec_name}")
+        # print("*"*50)
+        # test_dynamic_workflow(executor_name=exec_name)

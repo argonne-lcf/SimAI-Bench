@@ -11,7 +11,7 @@ from typing import List, Union, Dict, Any
 from SimAIBench.component import WorkflowComponent
 from SimAIBench.resources import *
 from SimAIBench.dag import DAG, DagStore, NodeStatus, DagFuture
-from SimAIBench.executors import TapsExecutor
+from SimAIBench.executors import TapsExecutor,DragonExecutor
 from SimAIBench.utils import get_nodes
 from concurrent.futures import Future
 from SimAIBench.config import server_registry
@@ -162,7 +162,10 @@ class Orchestrator:
     def start(self):
         """Start the server submit loop using a thread"""
         self.logger.info("Starting the server submit loop (threaded)")
-        self.executor = TapsExecutor(self.config)
+        if self.config.name == "dragon":
+            self.executor = DragonExecutor(self.config,self.sys_info)
+        else:
+            self.executor = TapsExecutor(self.config,self.sys_info)
         instruction_queue = queue.Queue()
         result_queue = queue.Queue()
         submit_thread = threading.Thread(target=self._submit, args=(instruction_queue, result_queue), daemon=True)

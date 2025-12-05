@@ -8,7 +8,8 @@ from SimAIBench.dag import DAG, NodeStatus,DagFuture
 from SimAIBench.component import WorkflowComponent
 from SimAIBench.executors import BaseExecutor
 from SimAIBench.resources import ClusterResource
-from SimAIBench.config import OchestratorConfig
+from SimAIBench.config import OchestratorConfig, SystemConfig
+from SimAIBench.resources import NodeResourceList
 from concurrent.futures import Future
 
 from networkx import DiGraph, topological_sort
@@ -30,13 +31,12 @@ class TapsExecutor(BaseExecutor):
     """
     A interface class to execute my explicit DAG using taps engine.
     """
-    def __init__(self, config: OchestratorConfig):
-        super().__init__()
+    def __init__(self, config: OchestratorConfig, sys_info: NodeResourceList):
+        super().__init__(config, sys_info)
         if not TAPS_AVAILABLE:
             self.logger.error("TAPS is not installed - cannot create TapsExecutor")
             raise ImportError('TAPS is not installed. Please install it to use TapsExecutor.')
         
-        self.orchestrator_config = config
         self.logger.info("Initializing TapsExecutor")
         available_executors: Dict = get_executor_configs()
         try:
@@ -48,15 +48,43 @@ class TapsExecutor(BaseExecutor):
         self.futures: Dict[str, TaskFuture] = {}
         self.logger.info("TapsExecutor initialized successfully")
 
-    def submit(self, f: Any, args: Sequence) -> Future:
+    def submit_dag(self, cluster_resource: Any, dag: DAG) -> Tuple[DAG, Dict]:
         """
-        Submits a task using the TAPS engine.
-
-        Args:
-            task
-            args: arguments
+        Submit a DAG for execution
+        
+        :param self: Description
+        :param cluster_resource: Description
+        :type cluster_resource: Any
+        :param dag: Description
+        :type dag: DAG
+        :return: Description
+        :rtype: Tuple[DAG, Dict]
         """
-        return self.engine.submit(task(f),*args)
+        futures = {}
+        graph: DiGraph = dag.graph
+        node_execution_order = list(topological_sort(graph))
+        for i, node in enumerate(node_execution_order):
+            node_obj = graph.nodes[node]
+            if node_obj['status'] == NodeStatus.NOT_SUBMITTED:
+                try:
+                    self.logger.debug(f"Submitting {node} for execution")
+                    args = [cluster_resource]
+                    # Iterate through dependencies and collect their futures
+                    predecessors = list(graph.predecessors(node))
+                    if predecessors:
+                        self.logger.debug(f"Node {node} has {len(predecessors)} dependencies: {predecessors}")
+                        for predecessor in predecessors:
+                            args.append(futures[predecessor])
+                    else:
+                        self.logger.debug(f"Node {node} has no dependencies")
+                    
+                    futures[node] = self.engine.submit(task(node_obj["callable"]), *args)
+                    
+                    node_obj["status"] = next(node_obj["status"])
+                except Exception as e:
+                    self.logger.error(f"Submitting {node} failed with exception {e}")
+                    node_obj["status"] = NodeStatus.FAILED   
+        return dag, futures
 
     def __exit__(self, exc_type, exc_value, traceback):
         """Exit context manager - cleanup resources"""
