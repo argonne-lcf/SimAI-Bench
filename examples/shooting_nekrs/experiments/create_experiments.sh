@@ -1,9 +1,10 @@
 #!/bin/bash
 
 for node in 2;do
+    mkdir -p ${node}nodes
     cd ${node}nodes
-    # rm -r *
-    mkdir outputs
+    rm -r *
+    mkdir outputs run_dir
     # # ####
     ln -s ../../configs configs
     ln -s ../../workflow.py workflow.py
