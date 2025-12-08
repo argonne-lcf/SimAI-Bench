@@ -29,7 +29,7 @@ class DragonCompiledTaskFuture:
     A simple wrapper around dragon task to provide methods like exception, done, cancel, result
     :task
     """
-    def __init__(self, task: Task, dag_task: Task):
+    def __init__(self, task: Task, dag_task: Task = None):
         self.task = task
         self.dag_task = dag_task
     
@@ -84,7 +84,7 @@ class DragonExecutor(BaseExecutor):
         self.batch = Batch(num_workers=1, disable_telem=True)
     
 
-    def submit_dag(self, cluster_resource: Any, dag: DAG) -> Tuple[DAG, Dict]:
+    def submit_dag(self, cluster_resource: Any, dag: DAG, futures: Dict) -> Tuple[DAG, Dict]:
         """
         Submit a DAG for execution
 
@@ -99,8 +99,6 @@ class DragonExecutor(BaseExecutor):
         :return: Description
         :rtype: Tuple[DAG, Dict]
         """
-        futures = {}
-        dependencies = {}
         tasks = {}
         graph: DiGraph = dag.graph
         node_execution_order = list(topological_sort(graph))
@@ -116,13 +114,13 @@ class DragonExecutor(BaseExecutor):
                     if predecessors:
                         self.logger.debug(f"Node {node} has {len(predecessors)} dependencies: {predecessors}")
                         for predecessor in predecessors:
-                            args.append(dependencies[predecessor])
+                            args.append(futures[predecessor].task.result)
                     else:
                         self.logger.debug(f"Node {node} has no dependencies")
                     
                     task = self._create_task(node_obj, args)
                     tasks[node] = task
-                    dependencies[node] = task.result
+                    futures[node] = DragonCompiledTaskFuture(task,dag_task=None)
                     node_obj["status"] = next(node_obj["status"])
                 except Exception as e:
                     self.logger.error(f"Submitting {node} failed with exception {e}")
@@ -133,7 +131,7 @@ class DragonExecutor(BaseExecutor):
             dag_task = self.batch.compile(list(tasks.values()))
             dag_task.start()
             for node in node_execution_order:
-                futures[node] = DragonCompiledTaskFuture(task=tasks[node],dag_task=dag_task)
+                futures[node].dag_task=dag_task
         return dag, futures
 
     def _create_task(self, node_obj: Any, args: Sequence) -> Task:

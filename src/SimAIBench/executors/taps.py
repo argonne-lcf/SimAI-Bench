@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import logging
+import logging, os
 from pathlib import Path
 from typing import Any, Dict, Tuple, List, Sequence
 
@@ -16,11 +16,13 @@ from networkx import DiGraph, topological_sort
 from SimAIBench.profiling import CallableProfiler
 
 try:
+    import taps
     from taps.engine import Engine, as_completed, TaskFuture, task
     from taps.executor.python import ThreadPoolConfig
     from taps.plugins import get_executor_configs
     TAPS_AVAILABLE = True
     print("TAPS successfully imported")
+    from taps.executor.parsl import HTExConfig, ParslHTExConfig
 except ImportError:
     TAPS_AVAILABLE = False
     print("TAPS is not available - TapsExecutor will not function")
@@ -38,17 +40,31 @@ class TapsExecutor(BaseExecutor):
             raise ImportError('TAPS is not installed. Please install it to use TapsExecutor.')
         
         self.logger.info("Initializing TapsExecutor")
-        available_executors: Dict = get_executor_configs()
-        try:
-            self.executor_config = available_executors[config.name]()
-        except Exception as e:
-            self.logger.error(f"Executor config '{config.name}' not found in available executors: {list(available_executors.keys())}")
-            raise
+        if self.config.name == "ray":
+            os.environ["TMPDIR"]="/tmp"
+        
+        if self.config.name == "dask":
+            import dask.config
+            self.logger.warning("Resetting some dask config")
+            dask.config.set({"distributed.comm.tls.max-version":None})
+            dask.config.set({"distributed.scheduler.idle-timeout":None})
+            dask.config.set({"distributed.scheduler.no-workers-timeout":None})
+            dask.config.set({"distributed.worker.lifetime.duration":None})
+
+        if self.config.name == "parsl-htex":
+            self.executor_config = ParslHTExConfig(htex=HTExConfig())
+        else:
+            available_executors: Dict = get_executor_configs()
+            try:
+                self.executor_config = available_executors[config.name]()
+            except Exception as e:
+                self.logger.error(f"Executor config '{config.name}' not found in available executors: {list(available_executors.keys())}")
+                raise
         self.engine = Engine(self.executor_config.get_executor())
         self.futures: Dict[str, TaskFuture] = {}
         self.logger.info("TapsExecutor initialized successfully")
 
-    def submit_dag(self, cluster_resource: Any, dag: DAG) -> Tuple[DAG, Dict]:
+    def submit_dag(self, cluster_resource: Any, dag: DAG, old_futures: Dict) -> Tuple[DAG, Dict]:
         """
         Submit a DAG for execution
         
@@ -63,6 +79,7 @@ class TapsExecutor(BaseExecutor):
         futures = {}
         graph: DiGraph = dag.graph
         node_execution_order = list(topological_sort(graph))
+        count = 0
         for i, node in enumerate(node_execution_order):
             node_obj = graph.nodes[node]
             if node_obj['status'] == NodeStatus.NOT_SUBMITTED:
@@ -74,7 +91,10 @@ class TapsExecutor(BaseExecutor):
                     if predecessors:
                         self.logger.debug(f"Node {node} has {len(predecessors)} dependencies: {predecessors}")
                         for predecessor in predecessors:
-                            args.append(futures[predecessor])
+                            try:
+                                args.append(old_futures[predecessor])
+                            except KeyError:
+                                args.append(futures[predecessor])
                     else:
                         self.logger.debug(f"Node {node} has no dependencies")
                     

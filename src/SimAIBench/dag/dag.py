@@ -2,6 +2,7 @@ import networkx as nx
 from typing import Dict
 from SimAIBench.component import WorkflowComponent
 from SimAIBench.resources import ClusterResource, NodeResourceList, NodeResourceCount, JobResource
+from SimAIBench.config import OchestratorConfig
 import time
 import logging
 from functools import partial
@@ -31,8 +32,9 @@ class DAG:
     """
         Class to build implicit DAGs from explitic DAGs give by the user.
     """
-    def __init__(self, workflow_components: Dict[str, WorkflowComponent]):
+    def __init__(self, workflow_components: Dict[str, WorkflowComponent], manage_resources = True):
         self._wcs = workflow_components
+        self.manage_resources = manage_resources
         logger.info(f"Initializing DAG with {len(workflow_components)} workflow components")
         self.graph = self._build_dag(workflow_components=workflow_components)
         self._prepare_callables()
@@ -47,7 +49,7 @@ class DAG:
         for c,wc in workflow_components.items():
             logger.debug(f"Adding node '{c}' with {wc.nnodes} nodes")
             graph.add_node(c,component=wc,status=NodeStatus.NOT_SUBMITTED)
-            if wc.nnodes*wc.ppn > 1:
+            if wc.nnodes*wc.ppn > 1 and self.manage_resources:
                 resource_node = c+"_resource"
                 logger.debug(f"Adding resource node '{resource_node}' for multi-node component '{c}'")
                 graph.add_node(resource_node,component=WorkflowComponent(wc.name+"_resource",lambda x: x,"local"),status=NodeStatus.NOT_SUBMITTED)
@@ -56,7 +58,7 @@ class DAG:
         
         ##add all the edges
         for c,wc in workflow_components.items():
-            if wc.nnodes*wc.ppn > 1:
+            if wc.nnodes*wc.ppn > 1 and self.manage_resources:
                 for d in workflow_components[c].dependencies:
                     logger.debug(f"Adding edge: {d} -> {c}_resource")
                     graph.add_edge(d,c+"_resource")
@@ -80,7 +82,7 @@ class DAG:
         """Create callable for a specific node"""
         logger.debug(f"Preparing callable for node '{node_name}'")
         wc:WorkflowComponent = self.graph.nodes[node_name]["component"]
-        if wc.nnodes*wc.ppn > 1:
+        if wc.nnodes*wc.ppn > 1 and self.manage_resources:
             logger.debug(f"Creating MPI callable for multi-node component '{node_name}'")
             self.graph.nodes[node_name]["callable"] = self._get_mpi_callable(wc)
         elif "_resource" in node_name:
@@ -110,7 +112,7 @@ class DAG:
         logger.debug(f"Added node '{workflow_component.name}' to graph")
         
         # If it's a multi-node component, add resource node
-        if workflow_component.nnodes*workflow_component.ppn > 1:
+        if workflow_component.nnodes*workflow_component.ppn > 1 and self.manage_resources:
             resource_node = workflow_component.name + "_resource"
             resource_wc = WorkflowComponent(workflow_component.name + "_resource", lambda x: x, "local")
             self.graph.add_node(resource_node, 
@@ -119,7 +121,7 @@ class DAG:
             logger.debug(f"Added resource node '{resource_node}' for multi-node component")
         
         # Add edges for dependencies
-        if workflow_component.nnodes*workflow_component.ppn > 1:
+        if workflow_component.nnodes*workflow_component.ppn > 1 and self.manage_resources:
             for dep in workflow_component.dependencies:
                 self.graph.add_edge(dep, workflow_component.name + "_resource")
                 logger.debug(f"Added edge: {dep} -> {workflow_component.name}_resource")
@@ -132,7 +134,7 @@ class DAG:
         
         # Create callables for the new nodes
         self._prepare_callables_for_node(workflow_component.name)
-        if workflow_component.nnodes*workflow_component.ppn > 1:
+        if workflow_component.nnodes*workflow_component.ppn > 1 and self.manage_resources:
             self._prepare_callables_for_node(workflow_component.name + "_resource")
         
         logger.info(f"Successfully updated DAG with component '{workflow_component.name}'")

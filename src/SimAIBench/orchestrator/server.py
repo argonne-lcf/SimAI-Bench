@@ -120,13 +120,13 @@ class Orchestrator:
                         node_obj["callable"] = CallableProfiler(node_obj["callable"],self.profiler_server_info)
 
                 dag, futures_update = \
-                    self.executor.submit_dag(self.cluster_resource, dag)
+                    self.executor.submit_dag(self.cluster_resource, dag, futures)
                 futures.update(futures_update)
                 for node in futures_update:
                     dag_futures[node] = DagFuture(self.dagstore, node)
                 
-                if len(futures_update) > 0 :
-                    self.logger.info(f"Submitted {len(futures_update)} nodes for execution")
+                if len(futures_update) > 0:
+                    self.logger.info(f"Submitted {len(futures_update)} for execution!")
                     self.dagstore.put_dag(dag)
                     result_queue.put(dag_futures)
 

@@ -41,6 +41,11 @@ def test_static_workflow(executor_name="thread-pool"):
 
 def test_dynamic_workflow(executor_name="thread-pool"):
 
+    def new_sim(sleep_time:int):
+        import time
+        print("hello")
+        time.sleep(sleep_time)
+
     ##A task that generates a chain of tasks.
     ##Each task simply appends the data to the key
     def sim(client:OrchetratorClient, server_info: dict, ntasks: int = 10):
@@ -70,7 +75,7 @@ def test_dynamic_workflow(executor_name="thread-pool"):
             if i > 0:
                 dependencies = [f"sim{i-1}"]
             else:
-                dependencies = []
+                dependencies = ["new_sim"]
             future = client.submit(WorkflowComponent(f"sim{i}",sub_sim,type="local",args={"simid":i,"ds":ds},dependencies=dependencies))
             futures.append(future)
         while not all([future.done() for future in futures]):
@@ -83,7 +88,7 @@ def test_dynamic_workflow(executor_name="thread-pool"):
     server_info = server.get_server_info()
 
     #create necessary configs
-    orchestrator_config=OchestratorConfig(name=executor_name, profile=True)
+    orchestrator_config=OchestratorConfig(name=executor_name, profile=False)
     system_config=SystemConfig(name="local",ncpus=12,ngpus=0)
     
     orchestrator = Orchestrator(system_config,orchestrator_config)
@@ -99,8 +104,16 @@ def test_dynamic_workflow(executor_name="thread-pool"):
         type="local",
         args={"client":client, "server_info":server_info}
     )
-    future = client.submit(component)
+    ##create a workflow component using sim
+    new_component = WorkflowComponent(
+        "new_sim",
+        executable=new_sim,
+        type="local",
+        args={"sleep_time":5}
+    )
 
+    new_future = client.submit(new_component)
+    future = client.submit(component)
     while not future.done():
         print("Waiting")
         time.sleep(10)
@@ -111,12 +124,12 @@ def test_dynamic_workflow(executor_name="thread-pool"):
 
 
 if __name__ == "__main__":
-    for exec_name in ["dragon"]:
+    for exec_name in ["ray"]:
         print("*"*50)
         print(f"Testing static workflow for {exec_name}")
         print("*"*50)
         test_static_workflow(executor_name=exec_name)
-        # print("*"*50)
-        # print(f"Testing dynamic workflow for {exec_name}")
-        # print("*"*50)
-        # test_dynamic_workflow(executor_name=exec_name)
+        print("*"*50)
+        print(f"Testing dynamic workflow for {exec_name}")
+        print("*"*50)
+        test_dynamic_workflow(executor_name=exec_name)
