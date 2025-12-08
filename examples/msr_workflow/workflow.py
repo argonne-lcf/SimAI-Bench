@@ -1,7 +1,7 @@
 from SimAIBench import Workflow, ServerManager, SystemConfig
 from sim_exec import main as sim_main
 from train_ai_exec import main as train_ai_main
-from SimAIBench.config import ServerConfig, server_registry
+from SimAIBench.config import ServerConfig, server_registry, OchestratorConfig
 import os
 import argparse
 import json
@@ -29,7 +29,8 @@ def main():
     os.environ["ZE_FLAT_DEVICE_HIERARCHY"] = "COMPOSITE"
     
     # Initialize workflow with MPI launcher and Aurora system specifications
-    my_workflow = Workflow(system_config=SystemConfig(name="aurora", ncpus=104, ngpus=12, cpus = [i for i in range(104)], gpus=[f"{i}.{j}" for i in range(6) for j in range(2)]))
+    my_workflow = Workflow(orchestrator_config=OchestratorConfig(name="process-pool"),
+                           system_config=SystemConfig(name="aurora", ncpus=104, ngpus=12, cpus = [i for i in range(104)], gpus=[f"{i}.{j}" for i in range(6) for j in range(2)]))
 
     # Get available compute nodes from PBS scheduler
     nodes = get_nodes()
