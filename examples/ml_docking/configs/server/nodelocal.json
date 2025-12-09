@@ -1,0 +1,4 @@
+{
+    "type": "node-local",
+    "nshards": 64
+}
