@@ -124,12 +124,21 @@ def test_dynamic_workflow(executor_name="thread-pool"):
 
 
 if __name__ == "__main__":
-    for exec_name in ["ray"]:
-        print("*"*50)
-        print(f"Testing static workflow for {exec_name}")
-        print("*"*50)
-        test_static_workflow(executor_name=exec_name)
-        print("*"*50)
-        print(f"Testing dynamic workflow for {exec_name}")
-        print("*"*50)
-        test_dynamic_workflow(executor_name=exec_name)
+    for exec_name in ["thread-pool","process-pool","parsl-local","dask","ray","dragon"]:
+        try:
+            print("*"*50)
+            print(f"Testing static workflow for {exec_name}")
+            print("*"*50)
+            test_static_workflow(executor_name=exec_name)
+            print("*"*50)
+            if exec_name == "dragon":
+                print("Dynamic workflows with dragon are not fully supported yet!")
+            else:
+                print(f"Testing dynamic workflow for {exec_name}")
+                print("*"*50)
+                test_dynamic_workflow(executor_name=exec_name)
+        except Exception as e:
+            print(f"Workflow execution failed with error {e}")
+            if exec_name == "dragon":
+                print("-"*50)
+                print("Try: dragon test_workflow.py")

@@ -288,12 +288,12 @@ class ServerManagerDragon(BaseServerManager):
                 "policy": policies
             }
         
-            if "policy" in self.config.get("server-options", {}):
+            if "policy" in server_options:
                 if self.logger:
                     self.logger.warning("Policy option provided as input. Replacing it!")
-                self.config["server-options"]["policy"] = opts["policy"]
+                server_options["policy"] = opts["policy"]
         
-            opts.update(self.config.get("server-options", {}))
+            opts.update(server_options)
             opts["n_nodes"] = None
             opts["managers_per_node"] = None
         
@@ -315,7 +315,7 @@ class ServerManagerDragon(BaseServerManager):
 
             if self.logger:
                 self.logger.info("Creating local Dragon dictionary using Dragon utils")
-                total_mem_gb = self.config.get('server-options', {}).get('total_mem', 1024*1024*1024*5) / (1024*1024*1024)
+                total_mem_gb = server_options.get('total_mem', 1024*1024*1024*5) / (1024*1024*1024)
                 self.logger.info(f"Total memory for local Dragon dictionary: {total_mem_gb} GB")
                 
             policy = DragonPolicy(distribution=DragonPolicy.Distribution.BLOCK)
@@ -325,7 +325,7 @@ class ServerManagerDragon(BaseServerManager):
                     nproc=1,
                     template=ProcessTemplate(
                         target=create_local_kvstore,
-                        args=(self.config.get("server-options", {}).get("total_mem", 1024*1024*1024*5),),
+                        args=(server_options.get("total_mem", 1024*1024*1024*5),),
                         cwd=os.getcwd(),
                         policy=policy
                     )

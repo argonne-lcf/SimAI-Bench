@@ -257,7 +257,9 @@ class ServerManagerRedis(BaseServerManager):
         if self.logger:
             self.logger.info(f"Setting up Redis server on {getattr(self.config, 'server_address', 'unknown')}")
         
-        if not hasattr(self.config, 'redis_server_exe') or not self.config.redis_server_exe:
+        if not hasattr(self.config, 'redis_server_exe') \
+            or not self.config.redis_server_exe or \
+                not os.path.exists(self.config.redis_server_exe):
             raise ValueError("redis_server_exe must be specified for Redis server")
         if not hasattr(self.config, 'server_address') or not self.config.server_address:
             raise ValueError("Server address is required")

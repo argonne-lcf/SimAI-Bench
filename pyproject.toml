@@ -31,9 +31,11 @@ dependencies = [
     'taps @ git+https://github.com/proxystore/taps.git'
 ]
 [project.optional-dependencies]
-gpu = [
+dragon = [
+        'dragonhpc'
+]
+intel = [
     "dpnp",
-    'dragonhpc==0.12rc2',
     'pyitt',
 ]
 cuda = [

@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging, os
 from pathlib import Path
 from typing import Any, Dict, Tuple, List, Sequence
+import subprocess
+import time
 
 from SimAIBench.dag import DAG, NodeStatus,DagFuture
 from SimAIBench.component import WorkflowComponent
@@ -11,6 +13,7 @@ from SimAIBench.resources import ClusterResource
 from SimAIBench.config import OchestratorConfig, SystemConfig
 from SimAIBench.resources import NodeResourceList
 from concurrent.futures import Future
+import socket
 
 from networkx import DiGraph, topological_sort
 from SimAIBench.profiling import CallableProfiler
@@ -23,6 +26,7 @@ try:
     TAPS_AVAILABLE = True
     print("TAPS successfully imported")
     from taps.executor.parsl import HTExConfig, ParslHTExConfig
+    from taps.executor.ray import RayConfig
 except ImportError:
     TAPS_AVAILABLE = False
     print("TAPS is not available - TapsExecutor will not function")
@@ -42,6 +46,8 @@ class TapsExecutor(BaseExecutor):
         self.logger.info("Initializing TapsExecutor")
         if self.config.name == "ray":
             os.environ["TMPDIR"]="/tmp"
+            self.ray_head_process = None
+            self._start_ray_cluster()
         
         if self.config.name == "dask":
             import dask.config
@@ -53,6 +59,8 @@ class TapsExecutor(BaseExecutor):
 
         if self.config.name == "parsl-htex":
             self.executor_config = ParslHTExConfig(htex=HTExConfig())
+        elif self.config.name == "ray":
+            self.executor_config = RayConfig(address="auto")
         else:
             available_executors: Dict = get_executor_configs()
             try:
@@ -117,10 +125,71 @@ class TapsExecutor(BaseExecutor):
         
         return False  # Don't suppress exceptions
     
+    def _start_ray_cluster(self):
+        """Start a Ray cluster using subprocess"""
+        try:
+            import sys
+            
+            # Get the current Python executable path to ensure Ray uses the same environment
+            python_executable = sys.executable
+            
+            # Start Ray head node with explicit python executable
+            head_cmd = [
+                python_executable, "-m", "ray.scripts.scripts", "start",
+                "--head",
+                f"--num-cpus={self.sys_info.cpu_count}",
+                "--port=6379",
+                "--disable-usage-stats",
+                "--include-dashboard=false"
+            ]
+            
+            self.logger.info(f"Starting Ray head node with Python: {python_executable}")
+            self.logger.info(f"Command: {' '.join(head_cmd)}")
+            
+            # Preserve the current environment variables
+            env = os.environ.copy()
+            
+            result = subprocess.run(
+                head_cmd, 
+                capture_output=True, 
+                text=True, 
+                check=True,
+                env=env  # Pass current environment
+            )
+            self.logger.info(f"Ray head started: {result.stdout}")
+            
+            # Give Ray time to initialize
+            time.sleep(2)
+            
+            # Now use "auto" to connect to the started cluster
+            self.executor_config = RayConfig(address="auto")
+            
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Failed to start Ray cluster: {e.stderr}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Error starting Ray cluster: {e}")
+            raise
+
+    def _stop_ray_cluster(self):
+        """Stop the Ray cluster"""
+        try:
+            if self.config.name == "ray":
+                self.logger.info("Stopping Ray cluster")
+                stop_cmd = ["ray", "stop"]
+                result = subprocess.run(stop_cmd, capture_output=True, text=True)
+                self.logger.info(f"Ray cluster stopped: {result.stdout}")
+        except Exception as e:
+            self.logger.error(f"Error stopping Ray cluster: {e}")
+
     def cleanup(self):
         try:
             if hasattr(self, 'engine'):
                 self.engine.shutdown()
                 self.logger.info("TAPS engine shutdown successfully")
+            
+            # Stop Ray cluster if we started it
+            self._stop_ray_cluster()
+            
         except Exception as e:
             self.logger.error(f"Error shutting down TAPS engine: {e}")
