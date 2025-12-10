@@ -326,7 +326,13 @@ class ServerManagerRedis(BaseServerManager):
         if self.redis_processes:
             for process in self.redis_processes:
                 process.terminate()
-                process.wait()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    if self.logger:
+                        self.logger.warning(f"Redis process did not terminate gracefully, force killing")
+                    process.kill()
+                    process.wait()
             if self.logger:
                 self.logger.info(f"Stopped {len(self.redis_processes)} Redis server(s)")
         

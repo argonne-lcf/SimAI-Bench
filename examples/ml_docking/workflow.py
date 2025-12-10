@@ -44,29 +44,62 @@ def parse_args():
     
     return parser.parse_args()
 
+def split_nodes(all_nodes, inference_nodes, training_nodes, sorter_nodes):
+    """
+    Split nodes into separate lists for each workflow component.
+    
+    Args:
+        all_nodes: List of all available nodes
+        inference_nodes: Number of nodes for inference
+        training_nodes: Number of nodes for training
+        sorter_nodes: Number of nodes for sorting
+        
+    Returns:
+        tuple: (node_counts dict, nodelists dict)
+    """
+    num_tot_nodes = len(all_nodes)
+    
+    # Calculate node counts
+    node_counts = {
+        "sorting": sorter_nodes,
+        "training": training_nodes,
+        "inference": inference_nodes
+    }
+    
+    assert sorter_nodes == inference_nodes, "Sorter and inference nodes must be equal"
+    
+    node_counts["simulation"] = num_tot_nodes - node_counts["sorting"]
+    
+    if node_counts["simulation"] <= 0:
+        raise ValueError(
+            f"Node partitioning not valid! "
+            f"{num_tot_nodes=} simulation={node_counts['simulation']} "
+            f"inference={node_counts['inference']} sorting={node_counts['sorting']} "
+            f"training={node_counts['training']}"
+        )
+    
+    # Split nodes into separate lists for each component
+    nodelists = {}
+    for key in node_counts.keys():
+        if key == "sorting" or key == "inference":
+            nodelists[key] = all_nodes[:node_counts[key]]
+        elif key == "training":
+            nodelists[key] = all_nodes[-1:]
+        else:
+            nodelists[key] = all_nodes[node_counts["sorting"]:node_counts["sorting"]+node_counts["simulation"]]
+    
+    return node_counts, nodelists
+
 args = parse_args()
 
-# Get total available nodes
+# Get total available nodes and split them
 all_nodes = get_nodes()
-num_tot_nodes = len(all_nodes)
-
-# Calculate node counts similar to dragon_driver_async
-node_counts = {
-    "sorting": args.sorter_nodes,
-    "training": args.training_nodes,
-    "inference": args.inference_nodes
-}
-node_counts["simulation"] = num_tot_nodes - node_counts["sorting"] - node_counts["training"] - node_counts["inference"]
-
-if node_counts["simulation"] <= 0:
-    raise ValueError(f"Node partitioning not valid! {num_tot_nodes=} simulation={node_counts['simulation']} inference={node_counts['inference']} sorting={node_counts['sorting']} training={node_counts['training']}")
-
-# Split nodes into separate lists for each component
-nodelists = {}
-offset = 0
-for key in node_counts.keys():
-    nodelists[key] = all_nodes[offset:offset+node_counts[key]]
-    offset += node_counts[key]
+node_counts, nodelists = split_nodes(
+    all_nodes,
+    args.inference_nodes,
+    args.training_nodes,
+    args.sorter_nodes
+)
 
 print(f"Node allocation: {node_counts}")
 print(f"Node lists: {nodelists}")
@@ -77,7 +110,7 @@ aurora_cpus = list(range(104))
 aurora_cpus.pop(52)
 aurora_cpus.pop(0)
 aurora_gpus = [f"{i}.{j}" for i in range(6) for j in range(2)]
-system_config = SystemConfig(name="cluster",cpus=aurora_cpus,gpus=aurora_gpus)
+system_config = SystemConfig(name="cluster",cpus=aurora_cpus,gpus=aurora_gpus,ncpus=len(aurora_cpus),ngpus=len(aurora_gpus))
 
 if args.server_type == "filesystem":
     infer_server_config = server_registry.create_config(type="filesystem",server_address=".inference_store")
@@ -89,15 +122,15 @@ elif args.server_type == "redis":
     del redis_config["type"]
     print(f"Using redis config: {redis_config}")
     infer_input_config = redis_config.copy()
-    infer_input_config["server_address"] = ",".join(f"{node}:6379" for node in all_nodes)
+    infer_input_config["server_address"] = ",".join([f"{node}:6382" for node in nodelists["inference"]])
     infer_server_config = server_registry.create_config(type="redis",**infer_input_config)
     
     training_data_input_config = redis_config.copy()
-    training_data_input_config["server_address"] = ",".join(f"{node}:6380" for node in all_nodes)
+    training_data_input_config["server_address"] = ",".join([f"{node}:6380" for node in nodelists["simulation"]])
     training_data_server_config = server_registry.create_config(type="redis",**training_data_input_config)
     
     top_candidates_input_config = redis_config.copy()
-    top_candidates_input_config["server_address"] = ",".join(f"{node}:6381" for node in all_nodes)
+    top_candidates_input_config["server_address"] = ",".join([f"{node}:6381" for node in all_nodes])
     top_candidates_server_config = server_registry.create_config(type="redis",**top_candidates_input_config)
 else:
     print(f"Server type {args.server_type} not supported in this example.")
@@ -110,9 +143,9 @@ training_dataserver = ServerManager(name="training",config=training_data_server_
 dataservers = [infer_dataserver,top_candidate_dataserver,training_dataserver]
 for server in dataservers:
     server.start_server()
-    if server.config.type == "redis" and server.config.get("is_clustered", False):
-        server.create_redis_cluster(
-            server_addresses=server.config.server_address,
+    if server.config.type == "redis" and server.config.is_clustered:
+        ServerManager.create_redis_cluster(
+            server_addresses=server.config.server_address.split(","),
             redis_cli_path="/home/ht1410/redis/src/redis-cli",
             replicas=0,  # No replicas for this setup
             timeout=30,
@@ -155,7 +188,7 @@ workflow.register_component(
     nodes=nodelists["inference"],
     ppn=12,
     num_gpus_per_process=1,
-    cpu_affinity=[1,2,3,4,5,6,7,8,9,10,11,12],
+    cpu_affinity=[1,5,9,13,17,21,53,57,61,65,69,73],
     gpu_affinity=["0.0","0.1","1.0","1.1","2.0","2.1","3.0","3.1","4.0","4.1","5.0","5.1"],
 )
 
@@ -164,8 +197,8 @@ workflow.register_component(
     executable=sorter_main,
     type="remote",
     nodes=nodelists["sorting"],
-    ppn=102,
-    cpu_affinity=system_config.cpus,
+    ppn=90,
+    cpu_affinity=[cpu for cpu in system_config.cpus if cpu not in [1,5,9,13,17,21,53,57,61,65,69,73]],
     args={"infer_serverinfo":infer_serverinfo,"top_candidate_serverinfo":top_candiate_serverinfo}
 )
 
@@ -174,8 +207,8 @@ workflow.register_component(
     executable=sim_main,
     type="remote",
     nodes=nodelists["simulation"],
-    ppn=32,
-    cpu_affinity=[i for i in range(1,33)],
+    ppn=98,
+    cpu_affinity=[cpu for cpu in system_config.cpus[4:]],
     args={"top_candidate_serverinfo":top_candiate_serverinfo,"training_serverinfo":training_serverinfo}
 )
 
@@ -186,7 +219,7 @@ workflow.register_component(
     nodes=nodelists["training"],
     ppn=1,
     num_gpus_per_process=1,
-    cpu_affinity=[1,2,3,4,5,6,7,8],
+    cpu_affinity=[1,2,3,4],
     gpu_affinity=["0.0"],
     args={"training_serverinfo":training_serverinfo,"top_candiate_serverinfo":top_candiate_serverinfo}
 )
@@ -196,4 +229,3 @@ wf = workflow.launch()
 infer_dataserver.stop_server()
 top_candidate_dataserver.stop_server()
 training_dataserver.stop_server()
-

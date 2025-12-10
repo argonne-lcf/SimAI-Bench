@@ -8,10 +8,10 @@ import time
 import logging
 from SimAIBench.resources import NodeResource, JobResource, NodeResourceCount, NodeResourceList
 from SimAIBench.config import server_registry
+from SimAIBench.utils import create_logger
 
 SUPPORTED_BACKENDS = ["redis","filesystem"]
 # Configure logging
-logger = logging.getLogger(__name__)
 
 class ClusterResource(ABC):
     """
@@ -22,10 +22,11 @@ class ClusterResource(ABC):
     """
 
     def __init__(self, nodes: List[str], system_info: NodeResource):
-        logger.info(f"Initializing {self.__class__.__name__} with {len(nodes)} nodes with each node config {system_info.__repr__()}")
+        self.logger = create_logger("ClusterResource")
+        self.logger.info(f"Initializing {self.__class__.__name__} with {len(nodes)} nodes with each node config {system_info.__repr__()}")
         self._system_info = system_info
         self._nodes = {node: system_info for node in nodes}
-        logger.debug(f"Node configuration: {list(self._nodes.keys())}")
+        self.logger.debug(f"Node configuration: {list(self._nodes.keys())}")
 
     @abstractmethod
     def allocate(self, job_resource: JobResource):
@@ -37,7 +38,7 @@ class ClusterResource(ABC):
 
     def _can_allocate(self, job_resource: JobResource) -> bool | List[str]:
         """Check if the job resource can be allocated."""
-        logger.debug(f"Checking allocation feasibility for job with {len(job_resource.resources)} resources")
+        self.logger.debug(f"Checking allocation feasibility for job with {len(job_resource.resources)} resources")
         
         if not job_resource.nodes:
             # Need to find at least len(resources) nodes to allocate
@@ -46,15 +47,15 @@ class ClusterResource(ABC):
             allocated_nodes = []
             node_names = list(self._nodes.keys())
             
-            logger.debug("Auto-selecting nodes for allocation")
+            self.logger.debug("Auto-selecting nodes for allocation")
             
             while True:
                 if job_counter >= len(job_resource.resources):
-                    logger.debug(f"Successfully found {len(allocated_nodes)} suitable nodes: {allocated_nodes}")
+                    self.logger.debug(f"Successfully found {len(allocated_nodes)} suitable nodes: {allocated_nodes}")
                     return allocated_nodes
                 
                 if cluster_counter >= len(self._nodes):
-                    logger.debug(f"Insufficient resources: only found {len(allocated_nodes)} nodes, need {len(job_resource.resources)}")
+                    self.logger.debug(f"Insufficient resources: only found {len(allocated_nodes)} nodes, need {len(job_resource.resources)}")
                     return []  
                 
                 resource_req = job_resource.resources[job_counter]
@@ -63,24 +64,24 @@ class ClusterResource(ABC):
                 if resource_req in self._nodes[node_name]:
                     allocated_nodes.append(node_name)
                     job_counter += 1
-                    logger.debug(f"Node {node_name} can satisfy resource requirement {job_counter}")
+                    self.logger.debug(f"Node {node_name} can satisfy resource requirement {job_counter}")
                 
                 cluster_counter += 1
         else:
-            logger.debug(f"Checking specific nodes: {job_resource.nodes}")
+            self.logger.debug(f"Checking specific nodes: {job_resource.nodes}")
             for node_id, node_name in enumerate(job_resource.nodes):
                 if node_name not in self._nodes:
-                    logger.error(f"Node {node_name} not found in cluster")
+                    self.logger.error(f"Node {node_name} not found in cluster")
                     return False
                 
                 available = self._nodes[node_name]
                 resource_req = job_resource.resources[node_id]
                 
                 if resource_req not in available:
-                    logger.warning(f"Node {node_name} cannot satisfy resource requirement: need {resource_req}, available {available}")
+                    self.logger.warning(f"Node {node_name} cannot satisfy resource requirement: need {resource_req}, available {available}")
                     return False
             
-            logger.debug("All specified nodes can satisfy requirements")
+            self.logger.debug("All specified nodes can satisfy requirements")
             return True
     
     def __repr__(self) -> str:
@@ -105,11 +106,11 @@ class LocalClusterResource(ClusterResource):
 
     def allocate(self, job_resource: JobResource) -> tuple[bool, JobResource]:
         """Allocate specific resource IDs."""
-        logger.info(f"Starting allocation for job with {len(job_resource.resources)} resource requirements")
+        self.logger.info(f"Starting allocation for job with {len(job_resource.resources)} resource requirements")
 
         allocation_result = self._can_allocate(job_resource)
         if not allocation_result:
-            logger.error("Allocation failed: insufficient resources")
+            self.logger.error("Allocation failed: insufficient resources")
             return False, job_resource
         
         # Track original state before allocation
@@ -118,26 +119,26 @@ class LocalClusterResource(ClusterResource):
         
         if not job_resource.nodes:
             allocated_nodes = allocation_result
-            logger.info(f"Allocating resources on auto-selected nodes: {allocated_nodes}")
+            self.logger.info(f"Allocating resources on auto-selected nodes: {allocated_nodes}")
             
             # Capture original state and perform allocation
             for node_id, node_name in enumerate(allocated_nodes):
                 resource_req = job_resource.resources[node_id]
                 original_state[node_name] = self._nodes[node_name]
-                logger.debug(f"Requesting {resource_req} from node {node_name}")
+                self.logger.debug(f"Requesting {resource_req} from node {node_name}")
                 self._nodes[node_name] = self._nodes[node_name] - resource_req
                 
                 # Calculate what was actually allocated
                 allocated_resource = original_state[node_name] - self._nodes[node_name]
                 allocated_resources.append(allocated_resource)
-                logger.debug(f"Allocated {allocated_resource} on node {node_name}")
-                logger.debug(f"Remaining resources on node {node_name} {self._nodes[node_name]}")
+                self.logger.debug(f"Allocated {allocated_resource} on node {node_name}")
+                self.logger.debug(f"Remaining resources on node {node_name} {self._nodes[node_name]}")
             
             # Return JobResource with actual allocated resources
-            logger.info(f"Allocation successful.")
+            self.logger.info(f"Allocation successful.")
             return True, JobResource(resources=allocated_resources, nodes=allocated_nodes)
         else:
-            logger.info(f"Allocating resources on specified nodes: {job_resource.nodes}")
+            self.logger.info(f"Allocating resources on specified nodes: {job_resource.nodes}")
             
             # Handle specified nodes case
             for node_id, node_name in enumerate(job_resource.nodes):
@@ -148,25 +149,25 @@ class LocalClusterResource(ClusterResource):
                 # Calculate what was actually allocated
                 allocated_resource = original_state[node_name] - self._nodes[node_name]
                 allocated_resources.append(allocated_resource)
-                logger.debug(f"Allocated {allocated_resource} on node {node_name}")
+                self.logger.debug(f"Allocated {allocated_resource} on node {node_name}")
             
-            logger.info("Allocation successful")
+            self.logger.info("Allocation successful")
             return True, JobResource(resources=allocated_resources, nodes=job_resource.nodes)
     
     def deallocate(self, job_resource: JobResource) -> bool:
         """Deallocate the resources"""
         if not job_resource.nodes:
-            logger.error("Deallocation failed: JobResource must have nodes specified")
+            self.logger.error("Deallocation failed: JobResource must have nodes specified")
             raise ValueError("JobResource must have nodes specified for deallocation")
         
-        logger.info(f"Starting deallocation for {len(job_resource.nodes)} nodes: {job_resource.nodes}")
+        self.logger.info(f"Starting deallocation for {len(job_resource.nodes)} nodes: {job_resource.nodes}")
         
         for node_id, node_name in enumerate(job_resource.nodes):
             resource_req = job_resource.resources[node_id]
             self._nodes[node_name] += resource_req
-            logger.debug(f"Deallocated {resource_req} from node {node_name}")
+            self.logger.debug(f"Deallocated {resource_req} from node {node_name}")
         
-        logger.info("Deallocation successful")
+        self.logger.info("Deallocation successful")
         return True
 
     
@@ -178,16 +179,16 @@ class DistributedClusterResource(ClusterResource):
         super().__init__(nodes, system_info)
         self._server_manager = None
         self._data_store = None
-        logger.info("Initializing distributed cluster resource manager")
+        self.logger.info("Initializing distributed cluster resource manager")
         if backend not in SUPPORTED_BACKENDS:
-            logger.error(f"Backend {backend} is not one of supported backend {SUPPORTED_BACKENDS}")
+            self.logger.error(f"Backend {backend} is not one of supported backend {SUPPORTED_BACKENDS}")
             raise
         self.ds_backend = backend
         
         self._start_server()
 
     def _start_server(self) -> bool:
-        logger.info("Starting data store server")
+        self.logger.info("Starting data store server")
         
         if self.ds_backend == "redis":
             # Hardcode the server config to use a redis cluster
@@ -199,53 +200,59 @@ class DistributedClusterResource(ClusterResource):
             "redis-server-exe": f"{os.environ.get('SIMAIBENCH_REDIS_CLI', default_redis_server)}"
             }
             server_config = server_registry.create_config(**server_config)
+        elif self.ds_backend == "filesystem":
+            server_config = {
+                "type": "filesystem",
+                "server_address": f"./.cluster_data_{uuid.uuid4()}"
+            }
+            server_config = server_registry.create_config(**server_config)
         else:
             server_config = {
                 "type": self.ds_backend,
             }
             server_config = server_registry.create_config(**server_config)
         
-        logger.debug(f"Server config: {server_config}")
+        self.logger.debug(f"Server config: {server_config}")
         
         try:      
             self._server_manager = ServerManager("resource_server", server_config)
             self._server_manager.start_server()
-            logger.info("Resource server started successfully")
+            self.logger.info("Resource server started successfully")
             
             ds = self._start_data_store()
             
             if not ds:
-                logger.error("Failed to start data store")
+                self.logger.error("Failed to start data store")
                 return False
             
             # Put all the info related to the node (as serializable data)
-            logger.debug("Initializing node data in DataStore")
+            self.logger.debug("Initializing node data in DataStore")
             for node, resource in self._nodes.items():
                 ds.stage_write(node, resource)
             
-            logger.info("Server initialization complete")
+            self.logger.info("Server initialization complete")
             return True
         except Exception as e:
-            logger.error(f"Failed to start server: {e}")
+            self.logger.error(f"Failed to start server: {e}")
             return False
     
     def _start_data_store(self) -> Optional[DataStore]:
         if not self._server_manager:
-            logger.debug("Server manager not available, starting server")
+            self.logger.debug("Server manager not available, starting server")
             self._start_server()
         
         try:
-            logger.debug("Creating DataStore connection")
+            self.logger.debug("Creating DataStore connection")
             ds = DataStore("resource_store", server_info=self._server_manager.get_server_info())
-            logger.info("DataStore connection established")
+            self.logger.info("DataStore connection established")
             return ds
         except Exception as e:
-            logger.error(f"Failed to start data store: {e}")
+            self.logger.error(f"Failed to start data store: {e}")
             return None
     
     def _update_from_data_store(self):
         """Sync local state from DataStore."""
-        logger.debug("Syncing state from DataStore")
+        self.logger.debug("Syncing state from DataStore")
         
         if not self._data_store:
             self._data_store = self._start_data_store()
@@ -253,13 +260,13 @@ class DistributedClusterResource(ClusterResource):
         for node_name in self._nodes.keys():
             try:
                 self._nodes[node_name] = self._data_store.stage_read(node_name)
-                logger.debug(f"Updated node {node_name} from DataStore")
+                self.logger.debug(f"Updated node {node_name} from DataStore")
             except Exception as e:
-                logger.error(f"Failed to read node {node_name} from DataStore: {e}")
+                self.logger.error(f"Failed to read node {node_name} from DataStore: {e}")
     
     def _update_to_data_store(self):
         """Sync local state to DataStore."""
-        logger.debug("Syncing state to DataStore")
+        self.logger.debug("Syncing state to DataStore")
         
         if not self._data_store:
             self._data_store = self._start_data_store()
@@ -267,22 +274,22 @@ class DistributedClusterResource(ClusterResource):
         for node_name, resource in self._nodes.items():
             try:
                 self._data_store.stage_write(node_name, resource)
-                logger.debug(f"Updated DataStore for node {node_name}")
+                self.logger.debug(f"Updated DataStore for node {node_name}")
             except Exception as e:
-                logger.error(f"Failed to stage write for node {node_name}: {e}")
+                self.logger.error(f"Failed to stage write for node {node_name}: {e}")
     
     def allocate(self, job_resource: JobResource) -> tuple[bool, JobResource]:
         """Allocate specific resource IDs with distributed locking."""
-        logger.info(f"Starting distributed allocation for job with {len(job_resource.resources)} resource requirements")
+        self.logger.info(f"Starting distributed allocation for job with {len(job_resource.resources)} resource requirements")
         if not self._data_store:
             self._data_store = self._start_data_store()
         with self._data_store.acquire_lock("cluster_allocation"):
-            logger.debug("Acquired allocation lock")
+            self.logger.debug("Acquired allocation lock")
             self._update_from_data_store()
             
             allocation_result = self._can_allocate(job_resource)
             if not allocation_result:
-                logger.warning("Distributed allocation failed: insufficient resources")
+                self.logger.warning("Distributed allocation failed: insufficient resources")
                 return False, job_resource
             
             # Track original state before allocation
@@ -291,7 +298,7 @@ class DistributedClusterResource(ClusterResource):
             
             if not job_resource.nodes:
                 allocated_nodes = allocation_result
-                logger.info(f"Allocating resources on auto-selected nodes: {allocated_nodes}")
+                self.logger.info(f"Allocating resources on auto-selected nodes: {allocated_nodes}")
                 
                 # Capture original state and perform allocation
                 for node_id, node_name in enumerate(allocated_nodes):
@@ -302,12 +309,12 @@ class DistributedClusterResource(ClusterResource):
                     # Calculate what was actually allocated
                     allocated_resource = original_state[node_name] - self._nodes[node_name]
                     allocated_resources.append(allocated_resource)
-                    logger.debug(f"Allocated {allocated_resource} on node {node_name}")
+                    self.logger.debug(f"Allocated {allocated_resource} on node {node_name}")
                 
                 # Return JobResource with actual allocated resources
                 new_job_resource = JobResource(resources=allocated_resources, nodes=allocated_nodes)
             else:
-                logger.info(f"Allocating resources on specified nodes: {job_resource.nodes}")
+                self.logger.info(f"Allocating resources on specified nodes: {job_resource.nodes}")
                 
                 # Handle specified nodes case
                 for node_id, node_name in enumerate(job_resource.nodes):
@@ -318,41 +325,41 @@ class DistributedClusterResource(ClusterResource):
                     # Calculate what was actually allocated
                     allocated_resource = original_state[node_name] - self._nodes[node_name]
                     allocated_resources.append(allocated_resource)
-                    logger.debug(f"Allocated {allocated_resource} on node {node_name}")
+                    self.logger.debug(f"Allocated {allocated_resource} on node {node_name}")
                 
                 new_job_resource = JobResource(resources=allocated_resources, nodes=job_resource.nodes)
             
             self._update_to_data_store()
-            logger.info("Distributed allocation successful")
+            self.logger.info("Distributed allocation successful")
             return True, new_job_resource
 
     def deallocate(self, job_resource: JobResource) -> bool:
         """Deallocate the resources with distributed locking."""
         if not job_resource.nodes:
-            logger.error("Distributed deallocation failed: JobResource must have nodes specified")
+            self.logger.error("Distributed deallocation failed: JobResource must have nodes specified")
             raise ValueError("JobResource must have nodes specified for deallocation")
         
-        logger.info(f"Starting distributed deallocation for {len(job_resource.nodes)} nodes: {job_resource.nodes}")
+        self.logger.info(f"Starting distributed deallocation for {len(job_resource.nodes)} nodes: {job_resource.nodes}")
 
         if not self._data_store:
             self._data_store = self._start_data_store()
         
         with self._data_store.acquire_lock("cluster_allocation"):
-            logger.debug("Acquired allocation lock for deallocation")
+            self.logger.debug("Acquired allocation lock for deallocation")
             self._update_from_data_store()
             
             for node_id, node_name in enumerate(job_resource.nodes):
                 resource_req = job_resource.resources[node_id]
                 self._nodes[node_name] += resource_req
-                logger.debug(f"Deallocated {resource_req} from node {node_name}")
+                self.logger.debug(f"Deallocated {resource_req} from node {node_name}")
             
             self._update_to_data_store()
-            logger.info("Distributed deallocation successful")
+            self.logger.info("Distributed deallocation successful")
             return True
     
     def get_cluster_status(self) -> Dict[str, any]:
         """Get current cluster status."""
-        logger.debug("Retrieving cluster status")
+        self.logger.debug("Retrieving cluster status")
         
         with self._data_store.acquire_lock("cluster_status", acquire_timeout=5):
             self._update_from_data_store()
@@ -362,18 +369,18 @@ class DistributedClusterResource(ClusterResource):
                 "timestamp": time.time()
             }
             
-            logger.debug(f"Cluster status retrieved for {len(status['nodes'])} nodes")
+            self.logger.debug(f"Cluster status retrieved for {len(status['nodes'])} nodes")
             return status
 
     def cleanup(self):
         """Cleanup when object is destroyed."""
-        logger.info("Cleaning up DistributedClusterResource")
+        self.logger.info("Cleaning up DistributedClusterResource")
         if self._server_manager:
             try:
                 self._server_manager.stop_server()
-                logger.info("Server stopped successfully")
+                self.logger.info("Server stopped successfully")
             except Exception as e:
-                logger.error(f"Error stopping server: {e}")
+                self.logger.error(f"Error stopping server: {e}")
 
 if __name__ == "__main__":
     # Configure logging for the main execution
