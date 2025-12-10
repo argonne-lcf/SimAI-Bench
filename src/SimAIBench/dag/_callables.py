@@ -5,6 +5,7 @@ import subprocess
 import base64
 import cloudpickle
 from SimAIBench.resources import ClusterResource, JobResource, NodeResourceCount, NodeResourceList
+from SimAIBench.utils import create_logger
 import time
 from functools import partial
 import numpy as np
@@ -25,25 +26,7 @@ class Callable(ABC):
     def _init_logger(self):
         if self.logger is not None:
             return
-        log_level_str = os.environ.get("SIMAIBENCH_LOGLEVEL","INFO")
-        if log_level_str == "INFO":
-            log_level = logging.INFO
-        elif log_level_str == "DEBUG":
-            log_level = logging.DEBUG
-        else:
-            log_level = logging.INFO
-
-        self.logger = logging.getLogger(f"Callable_{self.__name__}")
-        self.logger.setLevel(log_level)
-        if not self.logger.handlers:
-            log_dir = os.path.join(os.getcwd(), "logs")
-            os.makedirs(log_dir, exist_ok=True)
-            log_file = os.path.join(log_dir, f"{self.__name__}_callable.log")
-            file_handler = logging.FileHandler(log_file)
-            file_handler.setLevel(log_level)
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            file_handler.setFormatter(formatter)
-            self.logger.addHandler(file_handler)
+        self.logger = create_logger(f"Callable_{self.__name__}", subdir="callables")
 
     @abstractmethod
     def __call__(self, *args, **kwargs):
@@ -157,10 +140,11 @@ class ResourceAwareCallable(Callable):
         self.max_allocation_attempts = 1000  # Prevent infinite loops
         self.allocation_retry_delay = 0.5    # Seconds between attempts
         self.allocation_timeout = 300        # Total timeout in seconds
-        self.cpu_affinity = None
-        self.gpu_affinity = None
-        if original_workflow_component.cpu_affinity is not None and original_workflow_component.gpu_affinity is not None:
+        self.cpu_affinity = []
+        self.gpu_affinity = []
+        if original_workflow_component.cpu_affinity is not None and len(original_workflow_component.cpu_affinity) > 0:
             self.cpu_affinity = copy.deepcopy(original_workflow_component.cpu_affinity)
+        if original_workflow_component.gpu_affinity is not None and len(original_workflow_component.gpu_affinity) > 0:
             self.gpu_affinity = copy.deepcopy(original_workflow_component.gpu_affinity)
 
     def __call__(self, cluster_resource: ClusterResource, *results):

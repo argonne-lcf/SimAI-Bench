@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .server import Orchestrator
 
-logger = logging.getLogger(__name__)
 class OrchetratorClient:
     """This is the client of Orchestrator server. This will enable any task to modify the orchestrator DAG"""
     def __init__(self,orchestrator: 'Orchestrator'):
@@ -26,7 +25,6 @@ class OrchetratorClient:
         """
             Build the dag
         """
-        logger.info(f"Building DAG!")
         self.dag = DAG(workflow_components)
         self.dagstore.put_dag(self.dag)
     

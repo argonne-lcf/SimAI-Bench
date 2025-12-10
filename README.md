@@ -28,8 +28,9 @@ SimAI-Bench is composed of the following modules:
   * Dask
   * Taskvine
   * Ray
-  * Parsl 
-  Above integration are provided with [TAPS](https://github.com/proxystore/taps). In addition, we also provide integration with [DragonHPC](https://dragonhpc.org/portal/index.html).
+  * Parsl   
+
+Above integration are provided with [TAPS](https://github.com/proxystore/taps). In addition, we also provide integration with [DragonHPC](https://dragonhpc.org/portal/index.html).
 * *Profiling*: The `Profiling` module offers comprehensive performance monitoring and analysis capabilities. It tracks task execution times, resource utilization, and workflow bottlenecks through a plugin-based architecture that can be extended with custom metrics and analysis tools.
 
 
@@ -47,6 +48,23 @@ python -m venv _simai --system-site-packages
 git clone https://github.com/argonne-lcf/SimAI-Bench.git
 cd SimAI-Bench
 pip install .
+```
+
+For GPU support on intel machines 
+
+```bash
+pip install .[intel]
+```
+
+For GPU support on nvidia machines 
+
+```bash
+pip install .[cuda]
+```
+For dragonhpc support
+
+```bash
+pip install .[dragon]
 ```
 
 To configure the DragonHPC's high-speed transport agent (HSTA) to use Libfabric on Aurora, execute

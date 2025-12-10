@@ -6,7 +6,7 @@ import subprocess
 import copy
 import logging
 from glob import glob
-from typing import Dict, List, Any, Union, Callable
+from typing import Dict, List, Any, Union, Callable, Optional
 import logging
 import os
 
@@ -28,7 +28,7 @@ def get_nodes():
     return nodes
 
 
-def create_logger(logger_name:str):
+def create_logger(logger_name:str,subdir:Optional[str]=None) -> logging.Logger:
     log_level_str = os.environ.get("SIMAIBENCH_LOGLEVEL","INFO")
     if log_level_str == "INFO":
         log_level = logging.INFO
@@ -39,7 +39,7 @@ def create_logger(logger_name:str):
     logger = logging.getLogger(logger_name)
     logger.setLevel(log_level)
     if not logger.handlers:
-        log_dir = os.path.join(os.getcwd(), "logs")
+        log_dir = os.path.join(os.getcwd(), "logs", subdir) if subdir else os.path.join(os.getcwd(), "logs")
         os.makedirs(log_dir, exist_ok=True)
         log_file = os.path.join(log_dir, f"{logger_name}.log")
         file_handler = logging.FileHandler(log_file)

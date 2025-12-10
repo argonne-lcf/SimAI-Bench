@@ -10,8 +10,7 @@ import socket
 import numpy as np
 import csv
 from typing import Union
-
-LOGGER_NAME = __name__
+from SimAIBench.utils import create_logger
 
 class Simulation:
     def __init__(self,name="SIM",comm=None,server_info=None,logging=False,log_level=_logging.INFO,**kwargs):
@@ -43,30 +42,9 @@ class Simulation:
         
         self.logger = None
         if logging:
-            self._init_logger()
+            self.logger = create_logger(f"Simulation.{self.name}.rank{self.rank}", subdir="simulation")
         if self.logger:
             self.logger.info(f"Simulation initialized with name {self.name}, rank {self.rank}, size {self.size}, local_rank {self.local_rank}")
-
-    def _init_logger(self):
-        log_level_str = os.environ.get("SIMAIBENCH_LOGLEVEL","INFO")
-        if log_level_str == "INFO":
-            log_level = _logging.INFO
-        elif log_level_str == "DEBUG":
-            log_level = _logging.DEBUG
-        else:
-            log_level = _logging.INFO
-
-        self.logger = _logging.getLogger(f"{LOGGER_NAME}.{self.name}.rank{self.rank}")
-        self.logger.setLevel(log_level)
-        # if not self.logger.handlers:
-        log_dir = os.path.join(os.getcwd(), "logs")
-        os.makedirs(log_dir, exist_ok=True)
-        log_file = os.path.join(log_dir, f"{self.name}_rank{self.rank}.log")
-        file_handler = _logging.FileHandler(log_file)
-        file_handler.setLevel(log_level)
-        formatter = _logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(formatter)
-        self.logger.addHandler(file_handler)
 
     def init_from_dict(self, config:dict):
         kernels = config.get('kernels', [])

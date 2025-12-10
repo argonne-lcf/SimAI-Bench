@@ -7,8 +7,7 @@ from .dag import DAG, NodeStatus
 import time
 import logging
 import copy
-
-logger = logging.getLogger(__name__)
+from SimAIBench.utils import create_logger
 
 class DagStore:
     def __init__(self,config:ServerConfig, start_store:bool = True):
@@ -16,6 +15,7 @@ class DagStore:
         self._store_started = False
         self.server_info = None
         self.client = None
+        self.logger = create_logger("DagStore", subdir="dag")
         ##start the store at the first instantiation
         if start_store:
             self._start_store()
@@ -27,7 +27,7 @@ class DagStore:
             self._store_started = True
             self.server_info = self.manager.get_server_info()
         except Exception as e:
-            logger.error(f"Dagstore server failed to start with exception {e}")
+            self.logger.error(f"Dagstore server failed to start with exception {e}")
     
     def _create_client(self):
         if self.server_info is None:
@@ -67,10 +67,10 @@ class DagStore:
         dagstore = DagStore(copy.deepcopy(self._server_config),start_store=False)
         dagstore._store_started = self._store_started
         dagstore.server_info = self.server_info
-        logger.info(f"Created a copy of dagstore")
+        self.logger.info(f"Created a copy of dagstore")
         return dagstore
     
     def cleanup(self):
-        logger.info("Cleaning up dagstore")
+        self.logger.info("Cleaning up dagstore")
         if self.manager:
             self.manager.stop_server()

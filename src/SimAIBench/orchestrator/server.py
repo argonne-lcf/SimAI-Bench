@@ -24,6 +24,8 @@ from SimAIBench.profiling import DagStoreProfiler, CallableProfiler
 from SimAIBench.config import SystemConfig, OchestratorConfig, server_registry
 from SimAIBench.datastore import DataStore, ServerManager
 
+from SimAIBench.utils import create_logger
+
 # # Configure logging
 # logging.basicConfig(
 #     level=logging.INFO,
@@ -44,8 +46,7 @@ class Orchestrator:
     def __init__(self, 
                  sys_info: SystemConfig = SystemConfig(name="local"),
                  config: OchestratorConfig = OchestratorConfig(name="parsl-local")):
-        self.logger = None
-        self._init_logger()
+        self.logger = create_logger("Orchestrator", subdir="orchestrator")
         self.config = config
         self.sys_info = NodeResourceList.from_config(sys_info)
         self.cluster_resource = DistributedClusterResource(nodes=get_nodes(),system_info=self.sys_info)
@@ -67,27 +68,6 @@ class Orchestrator:
             self.dagstore = DagStoreProfiler(self.dagstore,self.profiler_server_info)
         self.executor = None
         self.dag_futures: Dict[str, DagFuture] = {}
-    
-    def _init_logger(self):
-        log_level_str = os.environ.get("SIMAIBENCH_LOGLEVEL","INFO")
-        if log_level_str == "INFO":
-            log_level = logging.INFO
-        elif log_level_str == "DEBUG":
-            log_level = logging.DEBUG
-        else:
-            log_level = logging.INFO
-
-        self.logger = logging.getLogger("Orchestrator")
-        self.logger.setLevel(log_level)
-        if not self.logger.handlers:
-            log_dir = os.path.join(os.getcwd(), "logs")
-            os.makedirs(log_dir, exist_ok=True)
-            log_file = os.path.join(log_dir, f"orchestrator.log")
-            file_handler = logging.FileHandler(log_file)
-            file_handler.setLevel(log_level)
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            file_handler.setFormatter(formatter)
-            self.logger.addHandler(file_handler)
 
     def report_stats(self):
         """Wait for completion and check for updates"""
