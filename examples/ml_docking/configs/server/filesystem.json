@@ -1,0 +1,4 @@
+{
+    "type": "filesystem",
+    "nshards": 64
+}

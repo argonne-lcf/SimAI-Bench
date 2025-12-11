@@ -114,7 +114,7 @@ def compute_mean_std_dragon(ddict, data, counts, my_rank, metric, size):
     
     return global_mean, global_std, ndone_ranks_mean, ndone_ranks_std
 
-def main(sim_config:dict,
+def sim_main(sim_config:dict,
          server_info:Union[str, dict]=None,
          is_colocated:bool=False,
          global_ddict=None,
@@ -191,7 +191,7 @@ def main(sim_config:dict,
         iteration_time_array[i] = iter_time
         data_write_time_array[i] = data_write_time
         
-        if simulation.poll_staged_data(f"ai_data_{rank}", is_local=is_local):
+        if simulation.datastore.poll_staged_data(f"ai_data_{rank}", is_local=is_local):
             data = simulation.stage_read(f"ai_data_{rank}", is_local=is_local)
             if data=="kill_sim":
                 if simulation.logger:
@@ -260,7 +260,7 @@ def main(sim_config:dict,
         if simulation.logger:
             simulation.logger.info(f"Mean write throughput (MB/s): {mean}, Std: {std}")
 
-    simulation.flush_logger()
+    # simulation.flush_logger()
     # simulation.clean()
 
 if __name__ == "__main__":
@@ -272,4 +272,4 @@ if __name__ == "__main__":
     with open(os.path.join(os.path.dirname(__file__), args.config), "r") as f:
         config = json.load(f)
 
-    main(config, server_info=args.server_info)
+    sim_main(config, server_info=args.server_info)

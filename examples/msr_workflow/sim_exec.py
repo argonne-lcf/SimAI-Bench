@@ -220,7 +220,7 @@ def main(sim_config:dict,
         if simulation.logger:
             simulation.logger.info(f"Mean write throughput (MB/s): {mean}, Std: {std}")
 
-    simulation.flush_logger()
+    # simulation.flush_logger()
     # simulation.clean()
 
 if __name__ == "__main__":

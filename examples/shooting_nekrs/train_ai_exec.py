@@ -120,7 +120,7 @@ def compute_mean_std_dragon(ddict, data, counts, my_rank, metric, size):
     
     return global_mean, global_std, ndone_ranks_mean, ndone_ranks_std
 
-def main(ai_config:str,
+def train_main(ai_config:str,
          server_info:Union[str, dict]=None,
          is_colocated:bool=False,
          global_ddict=None,
@@ -159,7 +159,7 @@ def main(ai_config:str,
     # Wait for the first file to be available before starting the loop
     if train_ai.logger:
         train_ai.logger.info(f"Waiting for first simulation data file: sim_output_{rank}_0")
-    while not train_ai.poll_staged_data(f"sim_output_{rank}_0", is_local=is_local):
+    while not train_ai.datastore.poll_staged_data(f"sim_output_{rank}_0", is_local=is_local):
         time.sleep(0.1)  # Small delay to avoid busy waiting
     last_update += 1
     if train_ai.logger:
@@ -191,7 +191,7 @@ def main(ai_config:str,
             tstart = time.time()
             dt_time = 0.0
             ###read until all staged data is read
-            while train_ai.poll_staged_data(f"sim_output_{rank}_{last_update}", is_local=is_local):
+            while train_ai.datastore.poll_staged_data(f"sim_output_{rank}_{last_update}", is_local=is_local):
                 tic = time.time()
                 data = train_ai.stage_read(f"sim_input_{rank}_{last_update}", is_local=is_local)
                 data = train_ai.stage_read(f"sim_output_{rank}_{last_update}", is_local=is_local)
@@ -267,7 +267,7 @@ def main(ai_config:str,
         mean, std = compute_mean_std_local(throughput, read_count)
         if train_ai.logger:
             train_ai.logger.info(f"Mean read throughput (MB/s): {mean}, Std: {std}")
-    train_ai.flush_logger()
+    # train_ai.flush_logger()
     # train_ai.clean()
 
 
@@ -278,5 +278,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     with open(os.path.join(os.path.dirname(__file__), args.config), "r") as f:
         config = json.load(f)
-    main(config, 
+    train_main(config, 
         server_info=args.server_info)

@@ -10,7 +10,9 @@ try:
     import oneccl_bindings_for_pytorch
 except ModuleNotFoundError as e:
     pass
-from .component import DataStore
+from SimAIBench.datastore import DataStore
+from SimAIBench.profiling import DataStoreProfiler
+from SimAIBench.utils import create_logger
 import time
 import socket
 import sys
@@ -18,9 +20,11 @@ import os
 import datetime
 import math
 import gc
-import logging as logging_
+import logging as _logging
 import numpy as np
 from typing import Union
+
+LOGGER_NAME = __name__
 
 class SimpleFeedForwardNet(nn.Module):
     def __init__(self, 
@@ -103,7 +107,7 @@ def train(model, dataloader, criterion, optimizer, device, num_epochs=10,ddp=Fal
             epoch_loss = running_loss / len(dataloader.dataset)
 
 
-class AI(DataStore):
+class AI:
     def __init__(self,
                  name = "AI", 
                  server_info:dict = {"type":"filesystem"},
@@ -124,9 +128,11 @@ class AI(DataStore):
                 ddp=False, 
                 comm=None,
                 logging=False,
-                log_level=logging_.INFO,
+                log_level=_logging.INFO,
                 **kwargs):
-        super().__init__(name,server_info=server_info,logging=logging,log_level=log_level, is_colocated=kwargs.get("is_colocated", False))
+        self.datastore = DataStore(name,server_info=server_info,logging=logging,log_level=log_level, is_colocated=kwargs.get("is_colocated", False))
+        if kwargs.get("profile_store",False) and kwargs.get("profile_server_info",None):
+            self.datastore = DataStoreProfiler(self.datastore,kwargs["profile_server_info"])
         self.name = name
         self.model_type = model_type
         self.loss_type = loss_type
@@ -184,6 +190,10 @@ class AI(DataStore):
             neurons_per_layer=neurons_per_layer
             )
         self.setup_training()
+
+        self.logger = None
+        if logging:
+            self.logger = create_logger(f"AI.{self.name}.rank{self.local_rank}", subdir="training")
             
     def build_model(self,             
                     dropout=0.1, 
@@ -325,7 +335,14 @@ class AI(DataStore):
                 if self.logger:
                     self.logger.debug(f"Elapsed time {elapsed_time} run count {current_runcount}")
             return elapsed_time, current_runcount
-
+        
+    ##function for backward compatibility
+    def stage_read(self,*args,**kwargs):
+        return self.datastore.stage_read(*args,**kwargs)
+    
+    ##function for backward compatibility
+    def stage_write(self,*args,**kwargs):
+        return self.datastore.stage_write(*args,**kwargs)
 
 
 # def set_model_params_from_train_time(self,target_time:float):

@@ -154,10 +154,10 @@ def main(ai_config:str,
             elap_time, rc = train_ai.train(run_time=run_time)
         train_time = time.time() - tic
         
-        if train_ai.config["type"] == "redis":
-            nclients = len(train_ai.redis_client)
-        elif train_ai.config["type"] == "dragon":
-            nclients = len(train_ai.dragon_dict.manager_nodes)
+        if train_ai.datastore.config["type"] == "redis":
+            nclients = len(train_ai.datastore.backend.redis_client)
+        elif train_ai.datastore.config["type"] == "dragon":
+            nclients = len(train_ai.datastore.backend.dragon_dict.manager_nodes)
         else:
             nclients = 1
             
@@ -172,7 +172,7 @@ def main(ai_config:str,
                 for sim_id in range(nsims):
                     try:
                         for client_id in range(nclients):
-                            if sim_id not in read_sims and train_ai.poll_staged_data(f"input_{sim_id}_{rank}_{step//update_frequency}",client_id=client_id,is_local=True):
+                            if sim_id not in read_sims and train_ai.datastore.poll_staged_data(f"input_{sim_id}_{rank}_{step//update_frequency}",client_id=client_id,is_local=True):
                                 tic = time.time()
                                 data = train_ai.stage_read(f"input_{sim_id}_{rank}_{step//update_frequency}",client_id=client_id,is_local=True)
                                 dt_time += time.time() - tic
@@ -233,7 +233,7 @@ def main(ai_config:str,
         if train_ai.logger:
             train_ai.logger.info(f"Mean read throughput (MB/s): {mean}, Std: {std}")
 
-    train_ai.flush_logger()
+    # train_ai.flush_logger()
     # if rank == 0:
     #     train_ai.clean()
 

@@ -1,5 +1,6 @@
 import json
-from SimAIBench.component import DataStore
+from SimAIBench.datastore import DataStore
+from SimAIBench.profiling import DataStoreProfiler
 import time
 from SimAIBench.kernel import *
 import os
@@ -9,8 +10,9 @@ import socket
 import numpy as np
 import csv
 from typing import Union
+from SimAIBench.utils import create_logger
 
-class Simulation(DataStore):
+class Simulation:
     def __init__(self,name="SIM",comm=None,server_info=None,logging=False,log_level=_logging.INFO,**kwargs):
         # Create default server_info if not provided
         if server_info is None:
@@ -19,7 +21,11 @@ class Simulation(DataStore):
                 "config": {"type": "filesystem", "server-address": os.path.join(os.getcwd(), ".tmp"), "nshards": 64}
             }
         
-        super().__init__(name, server_info, logging=logging, log_level=log_level, is_colocated=kwargs.get("is_colocated", False))
+        self.datastore = DataStore(name, server_info, logging=logging, log_level=log_level, is_colocated=kwargs.get("is_colocated", False))
+        
+        if kwargs.get("profile_store",False) and kwargs.get("profile_server_info",None):
+            self.datastore = DataStoreProfiler(self.datastore,kwargs["profile_server_info"])
+
         self.name = name
         self.comm = comm
         self.kernels = []
@@ -33,6 +39,10 @@ class Simulation(DataStore):
             self.size = kwargs.get("size", 1)
             self.rank = kwargs.get("rank", 0)
             self.local_rank = kwargs.get("local_rank", 0)
+        
+        self.logger = None
+        if logging:
+            self.logger = create_logger(f"Simulation.{self.name}.rank{self.rank}", subdir="simulation")
         if self.logger:
             self.logger.info(f"Simulation initialized with name {self.name}, rank {self.rank}, size {self.size}, local_rank {self.local_rank}")
 
@@ -156,6 +166,15 @@ class Simulation(DataStore):
             ##no all reduce to avoid unecessary communications 
             self.comm.Barrier()
         return total_dt
+
+    ##function for backward compatibility
+    def stage_read(self,*args,**kwargs):
+        return self.datastore.stage_read(*args,**kwargs)
+    
+    ##function for backward compatibility
+    def stage_write(self,*args,**kwargs):
+        return self.datastore.stage_write(*args,**kwargs)
+
 
 ###This was quite unrelaible. So, switched to keeping count or run_time during the self.run itself     
     # def set_kernel_run_count_by_time(self, name, total_time):

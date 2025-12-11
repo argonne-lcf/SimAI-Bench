@@ -17,7 +17,7 @@ import pyitt
 from typing import Union
 
 
-def main(ai_config:str,
+def infer_main(ai_config:str,
          server_info:Union[str, dict]=None,
          is_colocated:bool=False,
          init_MPI=True,
@@ -70,5 +70,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     with open(os.path.join(os.path.dirname(__file__), args.config), "r") as f:
         config = json.load(f)
-    main(config, 
+    infer_main(config, 
         server_info=args.server_info)

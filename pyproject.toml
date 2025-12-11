@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["SimAIBench"]
+include = ["SimAIBench*"]
 
 [project]
 name = "SimAI-Bench"
@@ -25,15 +25,20 @@ dependencies = [
     'torch',
     'pytest',
     'redis',
-    'dragonhpc==0.12rc2',
     'SciencePlots',
-    'pyitt',
-    'ensemble_launcher @ git+https://github.com/argonne-lcf/ensemble_launcher.git@4d4f6bd2dcf367cb0011aaa24b3d518debf0913a',
-
+    'cloudpickle',
+    'ensemble_launcher @ git+https://github.com/argonne-lcf/ensemble_launcher.git',
+    'taps @ git+https://github.com/proxystore/taps.git'
 ]
 [project.optional-dependencies]
-gpu = [
+dragon = [
+        'dragonhpc'
+]
+intel = [
     "dpnp",
+    'pyitt',
+]
+cuda = [
     "cupy"
 ]
 
