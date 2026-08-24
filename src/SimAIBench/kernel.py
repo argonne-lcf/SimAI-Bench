@@ -483,7 +483,7 @@ def device_sync(device: str):
         for q in default_queues:
             q.wait()
     elif device == "cuda" and CUPY_AVAILABLE:
-        cp.cuda.Stream.null.synchronize()
+        cp.cuda.Device().synchronize()
     else: # cpu: everything is synchronous
         pass
 
@@ -531,7 +531,7 @@ class HostTimer(KernelTimer):
 
 
 class CudaEventTimer(KernelTimer):
-    """cuda: event pair on the current (null) stream, synced at exit.
+    """cuda: event pair on the current stream, synced at exit.
 
     Entry synchronizes once so work left pending by previous operations
     (e.g. async H2D from a data store) drains before the clock starts
@@ -539,7 +539,7 @@ class CudaEventTimer(KernelTimer):
     """
 
     def __enter__(self):
-        cp.cuda.Stream.null.synchronize()
+        cp.cuda.get_current_stream().synchronize()
         self._start_evt = cp.cuda.Event()
         self._end_evt = cp.cuda.Event()
         self._tic = time.perf_counter()
@@ -617,11 +617,7 @@ class ComputeKernel(ABC):
     def sync(self,device:str):
         """Deprecated: use module-level device_sync().
         """
-        if device=="xpu":
-            for q in default_queues:
-                q.wait()
-        else:
-            pass
+        device_sync(device)
 
 
 class MatMulSimple2D(ComputeKernel):
