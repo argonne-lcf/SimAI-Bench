@@ -1,7 +1,7 @@
 
 import os
 from networkx import DiGraph, topological_sort
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Any, Sequence
 # Handle Dragon imports and type hints
 try:
     import dragon
@@ -11,11 +11,11 @@ try:
     from dragon.workflows.batch import Batch
     from dragon.workflows.batch.batch import AsyncDict, Task
     DRAGON_AVAILABLE = True
-    from typing import Any, Sequence
 except ImportError:
     DRAGON_AVAILABLE = False
     # When Dragon is not available, we'll use Any for type hints
-    ProcessGroup = any
+    ProcessGroup = Any
+    Task = Any
 
 from .base import BaseExecutor
 from SimAIBench.component import WorkflowComponent
